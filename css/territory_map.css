@@ -1,0 +1,44 @@
+html, body {
+    height: 100%;
+    width: 100%;
+    margin: 0px;
+}
+
+#map {
+    width: 100%;
+    height: 100%;
+}
+#export-map {
+    display: none;
+}
+#loading-spinner {
+    display: none;
+}
+
+.centered {
+    margin: 0;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.tv-file-controls {
+    top: .5em;
+    left: 3.5em;
+}
+.tv-draw-controls {
+    top: .5em;
+    left: 10em;
+}
+.tv-layer-controls {
+    top: .5em;
+    right: .5em;
+}
+
+.tv-file-controls button,
+.tv-draw-controls button,
+.tv-layer-controls button {
+    display: inline-block;
+}
+
