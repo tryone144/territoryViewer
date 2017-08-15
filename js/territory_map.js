@@ -304,44 +304,6 @@ viewer.ctrl.FileControls.prototype.handleExportViewport = function(evt) {
     viewer.exportViewport();
 };
 
-// Layer Handling (Add, Rename, Delete)
-viewer.ctrl.LayerControls = function(opt_options) {
-    var options = opt_options || {};
-
-    // Button "Add Layer"
-    var btnAdd = createButton('A', "Add Layer", function() {
-        var name = prompt("Enter name for new layer:");
-        if (name === null) {
-            console.warn("addTerritoryLayer(): cancel")
-        } else {
-            viewer.addTerritoryLayer(name);
-        }
-    });
-
-    // Button "Rename Layer"
-    var btnRename = createButton('R', "Rename Layer", function() {
-        console.log("FIXME: renameTerritoryLayer()");
-    });
-
-    // Button "Delete Layer"
-    var btnDelete = createButton('D', "Delete Layer", function() {
-        console.log("FIXME: deleteTerritoryLayer()");
-    });
-
-    // Add container div
-    var element = document.createElement('div');
-    element.className = 'tv-layer-controls ol-unselectable ol-control';
-    element.appendChild(btnAdd);
-    element.appendChild(btnRename);
-    element.appendChild(btnDelete);
-
-    ol.control.Control.call(this, {
-        element: element,
-        target: options.target
-    });
-};
-ol.inherits(viewer.ctrl.LayerControls, ol.control.Control);
-
 // Keyboard Handler Drawing features
 viewer.ctrl.KeyboardDrawInteractions = function(opt_options) {
     var options = opt_options || {};
@@ -446,7 +408,6 @@ viewer.initMap = function() {
         new viewer.ctrl.FileControls({
             mode: viewer.editMode,
         }),
-        //new viewer.ctrl.LayerControls(),
     ]);
 
     // Initialize the OpenLayers Map
@@ -584,39 +545,6 @@ viewer.addContextMenu = function() {
     });
     viewer.map.addControl(viewer.contextmenu);
 
-    /*var contextmenu = new ContextMenu({
-        //width: 170,
-        defaultItems: true,
-        items: [
-            {
-                text: 'Center map here',
-                classname: 'some-style-class',
-                //callback: center,
-            },
-            {
-                text: 'Add a Marker',
-                classname: 'some-style-class',
-                icon: 'img/marker.png',
-                //callback: marker,
-            },
-            '-',
-            {
-                text: 'Some Actions',
-                items: [
-                    {
-                        text: 'Action 1',
-                        //callback: action,
-                    },
-                    {
-                        text: 'Other action',
-                        //callback: action2,
-                    },
-                ],
-            },
-        ],
-    });
-    viewer.map.addControl(contextmenu);*/
-
     // Disable custom contextmenu on other controls
     var ctrls = Array.from(document.getElementsByClassName('ol-control'));
     ctrls = ctrls.concat(Array.from(document.getElementsByClassName('ol-scale-line')));
@@ -667,20 +595,27 @@ viewer.addContextMenu = function() {
             ],
         },
     ];
+    var layer_items = [
+        {
+            text: 'Add Layer',
+            callback: function(item) {
+                var name = prompt("Enter name for new layer:");
+                if (name === null) {
+                    console.warn("addTerritoryLayer(): cancel")
+                } else {
+                    viewer.addTerritoryLayer(name);
+                }
+            },
+        },
+    ];
     var feature_items = [
         {
             text: 'Delete',
-            callback: function(item) {
-                viewer.setChanged();
-                viewer.featureDelete(item.data.target);
-            },
+            callback: (item) => viewer.featureDelete(item.data.target),
         },
         {
             text: 'Edit',
-            callback: function(item) {
-                viewer.setChanged();
-                viewer.featureEdit(item.data.target);
-            },
+            callback: (item) => viewer.featureEdit(item.data.target),
         },
     ];
 
@@ -692,8 +627,10 @@ viewer.addContextMenu = function() {
 
         viewer.contextmenu.clear();
 
-        // add some items to the menu
+        // Add additional items, when in editMode
         if (viewer.editMode) {
+
+            // Feature specific items
             if (feature) {
                 for (var i = 0; i < feature_items.length; ++i) {
                     feature_items[i].data = {
@@ -705,10 +642,60 @@ viewer.addContextMenu = function() {
                 viewer.contextmenu.push('-');
             }
 
+            // Layer specific items
+            viewer.contextmenu.extend(layer_items);
+
+            var delete_entries = [];
+            var rename_entries = [];
+
+            viewer.forEachLayerIn(viewer.territoryGroup, function(layer) {
+                var title = layer.get('title') || "Layer #" + delete_entries.length;
+
+                delete_entries.push({
+                    text: title,
+                    callback: (item) => viewer.deleteTerritoryLayer(item.data.target),
+                    data: {
+                        target: layer,
+                    },
+                });
+
+                rename_entries.push({
+                    text: title,
+                    callback: function(item) {
+                        var name = prompt("Enter new name for '" + item.data.oldName + "':", item.data.oldName);
+                        if (name === null || name === item.data.oldName) {
+                            console.warn("renameTerritoryLayer(): cancel")
+                        } else {
+                            viewer.renameTerritoryLayer(item.data.target, name);
+                        }
+                    },
+                    data: {
+                        oldName: title,
+                        target: layer,
+                    },
+                });
+            });
+
+            if (delete_entries.length > 0) {
+                viewer.contextmenu.push({
+                    text: 'Delete Layer',
+                    items: delete_entries,
+                });
+            }
+
+            if (rename_entries.length > 0) {
+                viewer.contextmenu.push({
+                    text: 'Rename Layer',
+                    items: rename_entries,
+                });
+            }
+
+            // Drawing specific items
             viewer.contextmenu.extend(draw_items);
             viewer.contextmenu.push('-');
         }
 
+        // Default items
         viewer.contextmenu.extend(default_items);
     });
 };
@@ -733,6 +720,22 @@ viewer.addTerritoryLayer = function(name) {
     });
 
     viewer.territoryGroup.getLayers().push(l);
+};
+
+// Delete existing Layer
+viewer.deleteTerritoryLayer = function(layer) {
+    viewer.setChanged();
+    console.log("deleteTerritoryLayer(" + (layer.get('title') || 'unnamed') + ")");
+
+    viewer.territoryGroup.getLayers().remove(layer);
+};
+
+// Rename existing Layer
+viewer.renameTerritoryLayer = function(layer, name) {
+    viewer.setChanged();
+    console.log("renameTerritoryLayer(" + (layer.get('title') || 'unnamed') + ") to '" + name + "'");
+
+    layer.set('title', name);
 };
 
 // Start drawing of a Polygon
@@ -902,6 +905,7 @@ viewer.featureEdit = function(feature) {
 
 // Delete selected feature
 viewer.featureDelete = function(feature) {
+    viewer.setChanged();
     var id = feature.getId();
     console.log("viewer.featureDelete(" + id + ")");
 
@@ -930,7 +934,9 @@ viewer.featureDelete = function(feature) {
 
 // Add modify Interaction to selected feature and source
 viewer.startEdit = function(feature, source) {
+    viewer.setChanged();
     console.log("viewer.startEdit()");
+
     if (viewer.modifyInteraction !== undefined || viewer.drawControl !== undefined) {
         console.warn("Cancel active modify interaction");
         viewer.stopEdit();
