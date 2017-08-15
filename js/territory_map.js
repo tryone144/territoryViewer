@@ -14,17 +14,6 @@ DEFAULTS = {
     kingdom_hall: [7.2553192, 51.1779812],
 };
 
-function createButton(label, title, handler) {
-    var button = document.createElement('button');
-    button.innerHTML = label;
-    button.title = title;
-
-    button.addEventListener('click', handler, false);
-    button.addEventListener('touchstart', handler, false);
-
-    return button;
-}
-
 
 // Init custom namespace
 window.TerritoryViewer = {};
@@ -432,13 +421,27 @@ viewer.initMap = function() {
     var osmGroup = new ol.layer.Group({
         title: 'OpenStreetMap',
         layers: [
+            // OpenStreetMap (Humanitarian)
+            // http://${b}.tile.openstreetmap.fr/hot/${z}/${x}/${y}.png
+            new ol.layer.Tile({
+                title: "OSM Humanitarian",
+                type: 'base',
+                visible: false,
+                source: new ol.source.OSM({
+                    crossOrigin: "anonymous",
+                    url: "http://{a-b}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png",
+                }),
+            }),
             // OpenStreetMap (Mapnik)
-            // http://b.tile.openstreetmap.org/${z}/${x}/${y}.png
+            // http://${c}.tile.openstreetmap.org/${z}/${x}/${y}.png
             new ol.layer.Tile({
                 title: "OSM Mapnik",
                 type: 'base',
                 visible: true,
-                source: new ol.source.OSM(),
+                source: new ol.source.OSM({
+                    crossOrigin: "anonymous",
+                    url: "http://{a-c}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+                }),
             }),
         ],
     });
@@ -448,6 +451,42 @@ viewer.initMap = function() {
     var dtkGroup = new ol.layer.Group({
         title: 'NRW DTK',
         layers: [
+            // NRW ABK*
+            // http://www.wms.nrw.de/geobasis/wms_nw_abk_stern?
+            new ol.layer.Tile({
+                title: "ABK* 1:5.000",
+                type: 'base',
+                visible: false,
+                source: new ol.source.TileWMS({
+                    url: "http://www.wms.nrw.de/geobasis/wms_nw_abk_stern?",
+                    crossOrigin: 'anonymous',
+                    params: {
+                        LAYERS: 'nw_abk',
+                    },
+                    attributions: new ol.Attribution({
+                        html: '© Land NRW ' +
+                            '(<a href="https://www.govdata.de/dl-de/by-2-0">Datenlizenz Deutschland - Namensnennung - Version 2.0</a>)'
+                    }),
+                }),
+            }),
+            // NRW DTK10
+            // http://www.wms.nrw.de/geobasis/wms_nw_dtk10?
+            new ol.layer.Tile({
+                title: "DTK 1:10.000",
+                type: 'base',
+                visible: false,
+                source: new ol.source.TileWMS({
+                    url: "http://www.wms.nrw.de/geobasis/wms_nw_dtk10?",
+                    crossOrigin: 'anonymous',
+                    params: {
+                        LAYERS: 'nw_dtk10_col,nw_dtk10_res',
+                    },
+                    attributions: new ol.Attribution({
+                        html: '© Land NRW ' +
+                            '(<a href="https://www.govdata.de/dl-de/by-2-0">Datenlizenz Deutschland - Namensnennung - Version 2.0</a>)'
+                    }),
+                }),
+            }),
             // NRW DTK
             // http://www.wms.nrw.de/geobasis/wms_nw_dtk?
             new ol.layer.Tile({
@@ -510,17 +549,7 @@ viewer.initMap = function() {
     var territoryFeatures = new ol.Collection();
     viewer.territoryGroup = new ol.layer.Group({
         title: 'Territories',
-        layers: [
-            // territory border
-            new ol.layer.Vector({
-                title: 'Remscheid-Lennep',
-                visibility: true,
-                style: viewer.styles.territory,
-                source: new ol.source.Vector({
-                    features: territoryFeatures,
-                }),
-            }),
-        ],
+        layers: [],
     });
     viewer.groups.push(viewer.territoryGroup);
 
