@@ -25,12 +25,6 @@ function createButton(label, title, handler) {
     return button;
 }
 
-function createUUID() {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-        var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
-        return v.toString(16);
-    });
-}
 
 // Init custom namespace
 window.TerritoryViewer = {};
@@ -80,6 +74,48 @@ viewer.extentsOf = function(group) {
     return gext;
 };
 
+viewer.tools = {};
+viewer.tools.createButton = function(opts) {
+    var options = opts || {};
+
+    var button = document.createElement('button');
+    button.title = options.title || 'Button';
+
+    if (options.icon !== undefined) {
+        button.appendChild(viewer.tools.getIcon(options.icon));
+    } else {
+        button.innerHTML = options.label || 'X';
+    }
+
+    if (typeof options.handler === 'function') {
+        var that = options.that || this;
+        button.addEventListener('click', options.handler.bind(that), false);
+        button.addEventListener('touchstart', options.handler.bind(that), false);
+    }
+
+    return button;
+};
+viewer.tools.getIcon = function(name) {
+    var cls = name || "exclamation-triangle";
+
+    var icon = document.createElement('span');
+    icon.className = 'fa ' + cls;
+
+    return icon;
+};
+viewer.tools.parseHash = function(hash) {
+    if (typeof hash !== 'string' || hash.length < 1) {
+        return {};
+    }
+
+    var parse = (hash.charAt(0) === '#') ? hash.substring(1) : hash;
+    parse = parse.split(';');
+
+    return {
+        editMode: (parse.indexOf('edit') > -1),
+    };
+};
+
 viewer.setRender = function() {
     this.map.setTarget(this.map_div);
     this.loading_div.style = "";
@@ -100,6 +136,22 @@ viewer.setChanged = function() {
 viewer.resetChanged = function() {
     this.export_unsavedchanges = false;
 };
+viewer.setLoading = function() {
+    this.loading_div.style = "display: block;";
+};
+viewer.resetLoading = function() {
+    this.loading_div.style = "";
+};
+
+// Help and About Messages
+viewer.showHelp = function() {
+    console.log("FIXME: help()");
+};
+
+viewer.showAbout = function() {
+    console.log("FIXME: about()");
+};
+
 
 // =====================================
 // Custom Exceptions
@@ -126,15 +178,20 @@ viewer.ctrl.FileControls = function(opt_options) {
     var options = opt_options || {};
 
     // Button "Load Territory"
-    var fileInput = document.createElement('input');
-    fileInput.type = 'file';
-    fileInput.name = 'TerritoryFile';
-    fileInput.accept = '.json,application/json';
-    fileInput.style = 'position: fixed; top: -100em;';
+    this.fileInput_ = document.createElement('input');
 
-    var fileSelection = function() {
-        if (fileInput.files.length > 0) {
-            var file = fileInput.files[0];
+    var fi = this.fileInput_;
+    fi.type = 'file';
+    fi.name = 'TerritoryFile';
+    fi.accept = '.json,application/json';
+    fi.style = 'position: fixed; top: -100em;';
+
+    var fileSelection = function(evt) {
+        var input = evt.target;
+
+        if (input.files.length > 0) {
+            var file = input.files[0];
+
             viewer.loadTerritory(file, function(success, message) {
                 if (success === true) {
                     console.log("loadTerritory() finished");
@@ -147,99 +204,105 @@ viewer.ctrl.FileControls = function(opt_options) {
                     console.error("loadTerritory() failed: " + message);
                     alert("Error while loading territory '" + file.name + "': " + message);
                 }
-                viewer.loading_div.style = "";
-                fileInput.value = "";
+
+                viewer.resetLoading();
+                input.value = "";
             });
         }
     };
-    fileInput.addEventListener('change', fileSelection, false);
-    fileInput.addEventListener('click', (e) => e.stopPropagation(), false);
+    fi.addEventListener('change', fileSelection, false);
+    fi.addEventListener('click', (e) => e.stopPropagation(), false);
 
-    var btnLoad = createButton('L', "Load Territory", function(e) {
-        if (viewer.export_unsavedchanges === true) {
-            console.warn("loadTerritory(): unsaved changes!");
-            var loadanyway = confirm("You have unsaved changes. Load anyway and loose changes?");
-            if (loadanyway === false) {
-                return;
-            }
-            console.warn("loadTerritory(): ignore unsaved changes and load anyway");
-        }
-
-        viewer.loading_div.style = "display: block;";
-        fileInput.click();
+    this.btnLoad_ = viewer.tools.createButton({
+        icon: 'fa-folder-open-o',
+        title: "Load Territory",
+        that: this,
+        handler: viewer.ctrl.FileControls.prototype.handleLoad,
     });
-    btnLoad.appendChild(fileInput);
+    this.btnLoad_.appendChild(fi);
 
     // Button "Save Territory"
-    var btnSave = createButton('S', "Save Territory", function() {
-        if (viewer.export_filename === undefined) {
-            viewer.export_filename = "territory.json";
-        }
-        viewer.loading_div.style = "display: block;";
-        viewer.saveTerritory(function(success) {
-            viewer.loading_div.style = "";
-            viewer.resetChanged();
-            console.log("saveTerritory() finished");
-        });
+    this.btnSave_ = viewer.tools.createButton({
+        icon: 'fa-floppy-o',
+        title: "Save Territory",
+        that: this,
+        handler: viewer.ctrl.FileControls.prototype.handleSave,
     });
 
-    // Button "Export Viewport"
-    var btnExport = createButton('E', "Export Viewport", function() {
-        viewer.exportViewport();
+    // Button "Export Image"
+    this.btnExportViewport_ = viewer.tools.createButton();
+    this.btnExportExtent_ = viewer.tools.createButton();
+
+    this.btnExportViewport_ = viewer.tools.createButton({
+        icon: 'fa-picture-o',
+        title: "Export as image",
+        that: this,
+        handler: viewer.ctrl.FileControls.prototype.handleExportViewport,
     });
 
     // Add container div
     var element = document.createElement('div');
     element.className = 'tv-file-controls ol-unselectable ol-control';
-    element.appendChild(btnLoad);
-    element.appendChild(btnSave);
-    element.appendChild(btnExport);
+    element.appendChild(this.btnLoad_);
+    element.appendChild(this.btnSave_);
+    element.appendChild(this.btnExportViewport_);
+
+    if (!viewer.editMode) {
+        this.btnSave_.style = 'display: none';
+    }
 
     ol.control.Control.call(this, {
         element: element,
         target: options.target
     });
+
+    // Handle mode Changes
+    this.addEventListener('modeChanged', viewer.ctrl.FileControls.prototype.modeChanged, false);
 };
 ol.inherits(viewer.ctrl.FileControls, ol.control.Control);
 
-// Draw Handling (New)
-viewer.ctrl.DrawControls = function(opt_options) {
-    var options = opt_options || {};
+viewer.ctrl.FileControls.prototype.modeChanged = function(evt) {
+    var opts = evt.detail || {};
 
-    // Button "Draw Polygon"
-    var btnPoly = createButton('P', "Draw Polygon", function() {
-        viewer.drawPolygon();
-    });
+    if (opts.editMode === true) {
+        this.btnSave_.style = '';
+    } else {
+        this.btnSave_.style = 'display: none;';
+    }
+};
 
-    // Button "Draw Line"
-    var btnLine = createButton('L', "Draw Line", function() {
-        viewer.drawLine();
-    });
+viewer.ctrl.FileControls.prototype.handleLoad = function(evt) {
+    if (viewer.export_unsavedchanges === true) {
+        console.warn("loadTerritory(): unsaved changes!");
 
-    // Button "Add Marker"
-    var btnMark = createButton('M', "Add Marker", function() {
-        console.log("FIXME: drawMarker()");
-    });
+        var loadanyway = confirm("You have unsaved changes. Load anyway and loose changes?");
+        if (loadanyway === false) {
+            return; // do nothing
+        }
 
-    // Button "Add Text"
-    var btnText = createButton('T', "Add Text", function() {
-        console.log("FIXME: drawText()");
-    });
+        console.warn("loadTerritory(): ignore unsaved changes and load anyway");
+    }
 
-    // Add container div
-    var element = document.createElement('div');
-    element.className = 'tv-draw-controls ol-unselectable ol-control';
-    element.appendChild(btnPoly);
-    element.appendChild(btnLine);
-    element.appendChild(btnMark);
-    element.appendChild(btnText);
+    viewer.setLoading();
+    this.fileInput_.click();
+};
 
-    ol.control.Control.call(this, {
-        element: element,
-        target: options.target
+viewer.ctrl.FileControls.prototype.handleSave = function(evt) {
+    if (viewer.export_filename === undefined) {
+        viewer.export_filename = "territory.json";
+    }
+
+    viewer.setLoading();
+    viewer.saveTerritory(function(success) {
+        viewer.resetLoading();
+        viewer.resetChanged();
+        console.log("saveTerritory() finished");
     });
 };
-ol.inherits(viewer.ctrl.DrawControls, ol.control.Control);
+
+viewer.ctrl.FileControls.prototype.handleExportViewport = function(evt) {
+    viewer.exportViewport();
+};
 
 // Layer Handling (Add, Rename, Delete)
 viewer.ctrl.LayerControls = function(opt_options) {
@@ -292,6 +355,7 @@ ol.inherits(viewer.ctrl.KeyboardDrawInteractions, ol.interaction.Interaction);
 viewer.ctrl.KeyboardDrawInteractions.prototype.handleEvent = function(evt) {
     if (evt.type === 'keydown') {
         var orig = evt.originalEvent;
+
         switch (orig.key) {
             case "Enter":
                 if (viewer.drawInteraction !== undefined) {
@@ -337,14 +401,29 @@ viewer.initMap = function() {
     viewer.export_div = document.getElementById("export-map");
     viewer.loading_div = document.getElementById("loading-spinner");
 
-    viewer.editMode = (window.location.hash === "#edit");
-    window.addEventListener('hashchange', function(e) {
-        var parser = document.createElement('a');
-        parser.href = e.newURL;
+    // Init editMode
+    var opts = viewer.tools.parseHash(window.location.hash);
+    viewer.editMode = !!opts.editMode;
 
-        viewer.editMode = (parser.hash === "#edit");
+    window.addEventListener('hashchange', function(evt) {
+        var parser = document.createElement('a');
+        parser.href = evt.newURL;
+
+        var opts = viewer.tools.parseHash(parser.hash);
+        viewer.editMode = !!opts.editMode;
+
+        if (viewer.editMode !== true) {
+            viewer.stopDraw();
+            viewer.stopEdit();
+        }
+
+        var change_evt = new CustomEvent('modeChanged', {detail: opts});
+        viewer.map.getControls().forEach(function(ctrl) {
+            ctrl.dispatchEvent(change_evt);
+        });
     }, false);
 
+    // Init Controls and Interactions
     var interactions = [
         new ol.interaction.DragPan({
             condition: function(evt) {
@@ -356,6 +435,7 @@ viewer.initMap = function() {
             }
         }),
         new ol.interaction.DoubleClickZoom(),
+        new ol.interaction.PinchZoom(),
         new ol.interaction.MouseWheelZoom(),
         new ol.interaction.KeyboardPan(),
         new ol.interaction.KeyboardZoom(),
@@ -363,9 +443,10 @@ viewer.initMap = function() {
     var controls = ol.control.defaults().extend([
         new ol.control.ScaleLine(),
         new ol.control.LayerSwitcher(),
-        new viewer.ctrl.FileControls(),
-        new viewer.ctrl.DrawControls(),
-        new viewer.ctrl.LayerControls(),
+        new viewer.ctrl.FileControls({
+            mode: viewer.editMode,
+        }),
+        //new viewer.ctrl.LayerControls(),
     ]);
 
     // Initialize the OpenLayers Map
@@ -544,10 +625,7 @@ viewer.addContextMenu = function() {
     }
 
     viewer.contextmenu.addEventListener('beforeopen', function(evt) {
-        console.log(evt);
-        var feature = viewer.map.forEachFeatureAtPixel(evt.pixel, function(ft, l) {
-            return ft;
-        }, {
+        var feature = viewer.map.forEachFeatureAtPixel(evt.pixel, (ft, l) => ft, {
             hitTolerance: 6,
         });
 
@@ -559,11 +637,36 @@ viewer.addContextMenu = function() {
                 viewer.contextmenu.enable();
             }
         } else {
-            viewer.contextmenu.disable();
+            viewer.contextmenu.enable();
         }
     });
 
-    var default_items = [];
+    // Specify different menu items
+    var default_items = [
+        {
+            text: 'Help',
+            callback: (item) => viewer.showHelp(),
+        },
+        {
+            text: 'About',
+            callback: (item) => viewer.showAbout(),
+        },
+    ];
+    var draw_items = [
+        {
+            text: 'Draw',
+            items: [
+                {
+                    text: 'Polygon',
+                    callback: (item) => viewer.drawPolygon(),
+                },
+                {
+                    text: 'Line',
+                    callback: (item) => viewer.drawLine(),
+                },
+            ],
+        },
+    ];
     var feature_items = [
         {
             text: 'Delete',
@@ -583,25 +686,29 @@ viewer.addContextMenu = function() {
 
     // Add context sensitive actions
     viewer.contextmenu.addEventListener('open', function(evt) {
-        var feature = viewer.map.forEachFeatureAtPixel(evt.pixel, function(ft, l) {
-            return ft;
-        }, {
+        var feature = viewer.map.forEachFeatureAtPixel(evt.pixel, (ft, l) => ft, {
             hitTolerance: 6,
         });
 
         viewer.contextmenu.clear();
-        if (feature) {
-            // add some other items to the menu
-            if (viewer.editMode) {
+
+        // add some items to the menu
+        if (viewer.editMode) {
+            if (feature) {
                 for (var i = 0; i < feature_items.length; ++i) {
                     feature_items[i].data = {
                         target: feature,
                     };
                 }
+
                 viewer.contextmenu.extend(feature_items);
                 viewer.contextmenu.push('-');
             }
+
+            viewer.contextmenu.extend(draw_items);
+            viewer.contextmenu.push('-');
         }
+
         viewer.contextmenu.extend(default_items);
     });
 };
@@ -692,7 +799,7 @@ viewer.startDraw = function(source, type) {
         },
     });
     draw.addEventListener('drawend', function(evt) {
-        evt.feature.setId(createUUID());
+        evt.feature.setId(ol.control.LayerSwitcher.uuid());
         viewer.stopDraw();
     }, false);
 

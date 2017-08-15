@@ -27,18 +27,7 @@ html, body {
     top: .5em;
     left: 3.5em;
 }
-.tv-draw-controls {
-    top: .5em;
-    left: 10em;
-}
-.tv-layer-controls {
-    top: .5em;
-    right: .5em;
-}
-
-.tv-file-controls button,
-.tv-draw-controls button,
-.tv-layer-controls button {
+.tv-file-controls button {
     display: inline-block;
 }
 
