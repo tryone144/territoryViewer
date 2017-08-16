@@ -29,7 +29,7 @@ viewer.coordToProj = function(coords) {
 
 viewer.forEachLayerIn = function(group, callback) {
     var this_ = arguments.callee;
-    group.getLayers().forEach(function(layer, i, a) {
+    group.getLayers().forEach(function(layer) {
         if (layer instanceof ol.layer.Layer) {
             return callback(layer);
         } else if (layer instanceof ol.layer.Group) {
@@ -40,6 +40,16 @@ viewer.forEachLayerIn = function(group, callback) {
 viewer.forEachLayer = function(callback) {
     this.forEachLayerIn(this.map, callback);
 };
+viewer.colContains = function(collection, item) {
+    collection.forEach(function(i) {
+        if (i === item) {
+            found = true;
+            return false;
+        }
+    });
+
+    return found;
+}
 
 viewer.extentsOf = function(group) {
     var gext = null;
@@ -130,6 +140,30 @@ viewer.setLoading = function() {
 };
 viewer.resetLoading = function() {
     this.loading_div.style = "";
+};
+
+viewer.enableInteractions = function() {
+    var interaction_count_ = 2;
+
+    viewer.map.getInteractions().forEach(function(act) {
+        if (act instanceof ol.interaction.DoubleClickZoom || act instanceof ol.interaction.Select) {
+            setTimeout(function() {
+                act.setActive(true);
+            }, 200);
+            if (0 == --interaction_count_) { return false; }
+        }
+    });
+
+};
+viewer.disableInteractions = function() {
+    var interaction_count_ = 2;
+
+    viewer.map.getInteractions().forEach(function(act) {
+        if (act instanceof ol.interaction.DoubleClickZoom || act instanceof ol.interaction.Select) {
+            act.setActive(false);
+            if (0 == --interaction_count_) { return false; }
+        }
+    });
 };
 
 // Help and About Messages
@@ -510,15 +544,17 @@ viewer.initMap = function() {
     viewer.groups.push(dtkGroup);
 
     // init styles
-    viewer.styles = {};
-    viewer.styles.territory = new ol.style.Style({
+    var styles = {};
+    styles.territory = new ol.style.Style({
         zIndex: 1,
         fill: new ol.style.Fill({
-            color: 'rgba(255, 121, 97, 0.2)',
+            color: 'rgba(255, 121, 97, 0.0)',
         }),
         stroke: new ol.style.Stroke({
             color: '#f44336',
             width: 3,
+            lineDash: [20, 15, 10, 15],
+            lineDashOffset: 10,
         }),
         image: new ol.style.Circle({
             radius: 8,
@@ -528,14 +564,33 @@ viewer.initMap = function() {
         }),
     });
 
-    viewer.styles.territoryEdit = new ol.style.Style({
+    styles.territorySelect = new ol.style.Style({
+        zIndex: 1,
+        fill: new ol.style.Fill({
+            color: 'rgba(255, 121, 97, 0.2)',
+        }),
+        stroke: new ol.style.Stroke({
+            color: '#f44336',
+            width: 4,
+            lineDash: [20, 15, 10, 15],
+            lineDashOffset: 10,
+        }),
+        image: new ol.style.Circle({
+            radius: 8,
+            fill: new ol.style.Fill({
+                color: '#f44336',
+            }),
+        }),
+    });
+
+    styles.territoryEdit = new ol.style.Style({
         zIndex: 1,
         fill: new ol.style.Fill({
             color: 'rgba(244, 67, 54, 0.2)',
         }),
         stroke: new ol.style.Stroke({
             color: '#b9000a',
-            width: 5,
+            width: 4,
         }),
         image: new ol.style.Circle({
             radius: 9,
@@ -545,13 +600,74 @@ viewer.initMap = function() {
         }),
     });
 
+    styles.TextRed = new ol.style.Fill({
+        color: '#ff0000',
+    });
+
+    viewer.styles = {};
+    viewer.styles.territory = function(a, b) {
+        var [ft, res] = (b === undefined) ? [this, a] : [a, b];
+        return [styles.territory.clone()];
+    };
+
+    viewer.styles.territorySelect = function(a, b) {
+        var [ft, res] = (b === undefined) ? [this, a] : [a, b];
+
+        var style = styles.territorySelect.clone();
+        style.setText(new ol.style.Text({
+            font: '24pt Roboto, sans-serif',
+            text: ft.get('title') || '',
+            textAlign: 'center',
+        }));
+
+        return [style];
+    };
+
+    viewer.styles.territoryEdit = function(a, b) {
+        var [ft, res] = (b === undefined) ? [this, a] : [a, b];
+
+        var style = styles.territoryEdit.clone();
+        style.setText(new ol.style.Text({
+            font: '22pt Roboto, sans-serif',
+            text: (ft.get('title') || '') + ' (EDIT)',
+            textAlign: 'center',
+            fill: styles.TextRed,
+        }));
+
+        return [style];
+    };
+
     // Initialize Territory Layers
-    var territoryFeatures = new ol.Collection();
     viewer.territoryGroup = new ol.layer.Group({
         title: 'Territories',
         layers: [],
     });
     viewer.groups.push(viewer.territoryGroup);
+
+    // Special select Interaction
+    var select = new ol.interaction.Select({
+        //style: viewer.styles.territorySelect,
+        condition: ol.events.condition.click,
+        toggleCondition: ol.events.condition.click,
+        filter: (ft, l) => viewer.colContains(viewer.territoryGroup.getLayers(), l) && (ft.getGeometry() instanceof ol.geom.Polygon),
+        hitTolerance: 6,
+    });
+
+    select.addEventListener('change:active', function(evt) {
+        var active = evt.target.get(evt.key);
+        if (!active) {
+            console.log("Deselect all features");
+            evt.target.getFeatures().forEach((ft) => ft.setStyle(viewer.styles.territory));
+            evt.target.getFeatures().clear();
+        }
+    }, false);
+
+    select.addEventListener('select', function(evt) {
+        evt.selected.forEach((ft) => ft.setStyle(viewer.styles.territorySelect));
+        evt.deselected.forEach((ft) => ft.setStyle(viewer.styles.territory));
+    }, false);
+
+    viewer.map.addInteraction(select);
 
     // Add Layers to map
     viewer.groups.forEach(function(group) {
@@ -609,6 +725,12 @@ viewer.addContextMenu = function() {
             callback: (item) => viewer.showAbout(),
         },
     ];
+    var modify_items = [
+        {
+            text: 'Finish',
+            callback: (item) => viewer.stopEdit(),
+        },
+    ];
     var draw_items = [
         {
             text: 'Draw',
@@ -643,8 +765,19 @@ viewer.addContextMenu = function() {
             callback: (item) => viewer.featureDelete(item.data.target),
         },
         {
-            text: 'Edit',
+            text: 'Modify',
             callback: (item) => viewer.featureEdit(item.data.target),
+        },
+        {
+            text: 'Rename',
+            callback: function(item) {
+                var name = prompt("Enter new name for '" + item.data.oldName + "':", item.data.oldName);
+                if (name === null) {
+                    console.warn("viewer.featureRename(): cancel");
+                } else {
+                    viewer.featureRename(item.data.target, name);
+                }
+            },
         },
     ];
 
@@ -655,24 +788,32 @@ viewer.addContextMenu = function() {
         });
 
         viewer.contextmenu.clear();
+        var items = [];
 
         // Add additional items, when in editMode
         if (viewer.editMode) {
+
+            // Editing specific items
+            if (viewer.modifyInteraction !== undefined) {
+                items = items.concat(modify_items);
+                items.push('-');
+            }
 
             // Feature specific items
             if (feature) {
                 for (var i = 0; i < feature_items.length; ++i) {
                     feature_items[i].data = {
                         target: feature,
+                        oldName: feature.get('title') || "",
                     };
                 }
 
-                viewer.contextmenu.extend(feature_items);
-                viewer.contextmenu.push('-');
+                items = items.concat(feature_items);
+                items.push('-');
             }
 
             // Layer specific items
-            viewer.contextmenu.extend(layer_items);
+            items = items.concat(layer_items);
 
             var delete_entries = [];
             var rename_entries = [];
@@ -693,38 +834,41 @@ viewer.addContextMenu = function() {
                     callback: function(item) {
                         var name = prompt("Enter new name for '" + item.data.oldName + "':", item.data.oldName);
                         if (name === null || name === item.data.oldName) {
-                            console.warn("renameTerritoryLayer(): cancel")
+                            console.warn("renameTerritoryLayer(): cancel");
                         } else {
                             viewer.renameTerritoryLayer(item.data.target, name);
                         }
                     },
                     data: {
-                        oldName: title,
                         target: layer,
+                        oldName: title,
                     },
                 });
             });
 
             if (delete_entries.length > 0) {
-                viewer.contextmenu.push({
+                items.push({
                     text: 'Delete Layer',
                     items: delete_entries,
                 });
             }
 
             if (rename_entries.length > 0) {
-                viewer.contextmenu.push({
+                items.push({
                     text: 'Rename Layer',
                     items: rename_entries,
                 });
             }
 
+            items.push('-');
+
             // Drawing specific items
-            viewer.contextmenu.extend(draw_items);
-            viewer.contextmenu.push('-');
+            items = items.concat(draw_items);
+            items.push('-');
         }
 
         // Default items
+        viewer.contextmenu.extend(items);
         viewer.contextmenu.extend(default_items);
     });
 };
@@ -811,12 +955,7 @@ viewer.startDraw = function(source, type) {
         viewer.stopDraw();
     }
 
-    viewer.map.getInteractions().forEach(function(act) {
-        if (act instanceof ol.interaction.DoubleClickZoom) {
-            act.setActive(false);
-            return false;
-        }
-    });
+    viewer.disableInteractions();
 
     var draw = new ol.interaction.Draw({
         features: source.getFeatures(),
@@ -832,6 +971,9 @@ viewer.startDraw = function(source, type) {
     });
     draw.addEventListener('drawend', function(evt) {
         evt.feature.setId(ol.control.LayerSwitcher.uuid());
+        evt.feature.setStyle(viewer.styles.territory);
+        evt.feature.set('title', "");
+
         viewer.stopDraw();
     }, false);
 
@@ -870,14 +1012,7 @@ viewer.undoDraw = function(complete) {
 viewer.stopDraw = function(finishActive) {
     console.log("viewer.stopDraw(" + finishActive + ")");
 
-    viewer.map.getInteractions().forEach(function(act) {
-        if (act instanceof ol.interaction.DoubleClickZoom) {
-            setTimeout(function() {
-                act.setActive(true);
-            }, 200);
-            return false;
-        }
-    });
+    viewer.enableInteractions();
 
     if (viewer.drawControl !== undefined) {
         viewer.map.removeInteraction(viewer.drawControl);
@@ -961,6 +1096,14 @@ viewer.featureDelete = function(feature) {
     }
 };
 
+// Delete selected feature
+viewer.featureRename = function(feature, name) {
+    viewer.setChanged();
+    console.log("viewer.featureRename(" + feature.getId() + "): '" + (feature.get('title') || '') + "' to '" + name + "'");
+
+    feature.set('title', name);
+};
+
 // Add modify Interaction to selected feature and source
 viewer.startEdit = function(feature, source) {
     viewer.setChanged();
@@ -971,12 +1114,7 @@ viewer.startEdit = function(feature, source) {
         viewer.stopEdit();
     }
 
-    viewer.map.getInteractions().forEach(function(act) {
-        if (act instanceof ol.interaction.DoubleClickZoom) {
-            act.setActive(false);
-            return false;
-        }
-    });
+    viewer.disableInteractions();
 
     var modify = new ol.interaction.Modify({
         features: new ol.Collection([feature]),
@@ -1011,17 +1149,10 @@ viewer.startEdit = function(feature, source) {
 viewer.stopEdit = function() {
     console.log("viewer.stopEdit()");
 
-    viewer.map.getInteractions().forEach(function(act) {
-        if (act instanceof ol.interaction.DoubleClickZoom) {
-            setTimeout(function() {
-                act.setActive(true);
-            }, 200);
-            return false;
-        }
-    });
+    viewer.enableInteractions();
 
     if (viewer.modifyFeature !== undefined) {
-        viewer.modifyFeature.setStyle(null);
+        viewer.modifyFeature.setStyle(viewer.styles.territory);
         viewer.modifyFeature = undefined;
     }
 
@@ -1092,6 +1223,8 @@ viewer.loadTerritory = function(file, doneCallback) {
     var callback = function(succ, err) {
         viewer.export_filename = succ ? file.name : viewer.export_filename;
 
+        viewer.enableInteractions();
+
         if (typeof doneCallback === 'function') {
             doneCallback(succ, err);
         } else if (!succ) {
@@ -1144,6 +1277,11 @@ viewer.loadTerritory = function(file, doneCallback) {
 
             territories.push(l);
         }
+
+        // Disable any selection
+        viewer.stopDraw(true);
+        viewer.stopEdit();
+        viewer.disableInteractions();
 
         // Remove old Layers and add new
         var lc = viewer.territoryGroup.getLayers();
