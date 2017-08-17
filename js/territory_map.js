@@ -989,6 +989,7 @@ viewer.addContextMenu = function() {
 
             var delete_entries = [];
             var rename_entries = [];
+            var select_entries = [];
 
             viewer.forEachLayerIn(viewer.territoryGroup, function(layer) {
                 var title = layer.get('title') || "Layer #" + delete_entries.length;
@@ -1016,6 +1017,14 @@ viewer.addContextMenu = function() {
                         oldName: title,
                     },
                 });
+
+                select_entries.push({
+                    text: title,
+                    callback: (item) => viewer.selectLayer(item.data.target),
+                    data: {
+                        target: layer,
+                    },
+                });
             });
 
             if (delete_entries.length > 0) {
@@ -1033,6 +1042,13 @@ viewer.addContextMenu = function() {
             }
 
             items.push('-');
+
+            if (select_entries.length > 0) {
+                items.push({
+                    text: 'Draw Target',
+                    items: select_entries,
+                });
+            }
 
             // Drawing specific items
             items = items.concat(draw_items);
@@ -1064,6 +1080,7 @@ viewer.addTerritoryLayer = function(name) {
         }),
     });
 
+    viewer.activeLayer = l;
     viewer.territoryGroup.getLayers().push(l);
 };
 
@@ -1083,55 +1100,54 @@ viewer.renameTerritoryLayer = function(layer, name) {
     layer.set('title', name);
 };
 
-// Start drawing of a Polygon
-viewer.drawPolygon = function() {
+// Select draw target Layer
+viewer.selectLayer = function(layer) {
     var activeLayer = undefined;
-    viewer.forEachLayerIn(viewer.territoryGroup, function(layer) {
-        if (activeLayer === undefined) {
-            activeLayer = layer;
-            return false;
-        }
-    });
+
+    // No layer specified? Try to find one by hand
+    if (! (layer instanceof ol.layer.Base)) {
+        viewer.forEachLayerIn(viewer.territoryGroup, function(layer) {
+            if (activeLayer === undefined) {
+                activeLayer = layer;
+                return false;
+            }
+        });
+    } else {
+        activeLayer = layer;
+    }
 
     if (activeLayer === undefined) {
         throw new viewer.ex.DrawTerritoryException("No drawable Layer found");
     }
 
-    viewer.startDraw(activeLayer.getSource(), 'Polygon');
+    viewer.activeLayer = activeLayer;
+};
+
+// Start drawing of a Polygon
+viewer.drawPolygon = function() {
+    if (viewer.activeLayer === undefined) {
+        viewer.selectLayer();
+    }
+
+    viewer.startDraw(viewer.activeLayer.getSource(), 'Polygon');
 };
 
 // Start drawing of a PolyLine
 viewer.drawLine = function() {
-    var activeLayer = undefined;
-    viewer.forEachLayerIn(viewer.territoryGroup, function(layer) {
-        if (activeLayer === undefined) {
-            activeLayer = layer;
-            return false;
-        }
-    });
-
-    if (activeLayer === undefined) {
-        throw new viewer.ex.DrawTerritoryException("No drawable Layer found");
+    if (viewer.activeLayer === undefined) {
+        viewer.selectLayer();
     }
 
-    viewer.startDraw(activeLayer.getSource(), 'LineString');
+    viewer.startDraw(viewer.activeLayer.getSource(), 'LineString');
 };
 
 // Start drawing of a Marker
 viewer.drawMarker = function(text) {
-    var activeLayer = undefined;
-    viewer.forEachLayerIn(viewer.territoryGroup, function(layer) {
-        if (activeLayer === undefined) {
-            activeLayer = layer;
-            return false;
-        }
-    });
-
-    if (activeLayer === undefined) {
-        throw new viewer.ex.DrawTerritoryException("No drawable Layer found");
+    if (viewer.activeLayer === undefined) {
+        viewer.selectLayer();
     }
 
-    viewer.startDraw(activeLayer.getSource(), 'Point', text);
+    viewer.startDraw(viewer.activeLayer.getSource(), 'Point', text);
 };
 
 // Add Draw interaction of type to source
