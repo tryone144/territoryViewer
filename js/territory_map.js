@@ -73,6 +73,26 @@ viewer.extentsOf = function(group) {
     return gext;
 };
 
+viewer.scalePT = function(base, res) {
+    var pt = 9;
+    var scale = (0.125 * res);
+
+    if (typeof base !== 'number') {
+        return '13pt';
+    }
+    if (typeof res !== 'number') {
+        return base + 'pt;'
+    }
+
+    if (scale < 1) {
+        pt = base;
+    } else {
+        pt = base / scale;
+    }
+
+    return ((pt > 9) ? pt : 9) + 'pt';
+};
+
 viewer.tools = {};
 viewer.tools.createButton = function(opts) {
     var options = opts || {};
@@ -141,6 +161,42 @@ viewer.setLoading = function() {
 viewer.resetLoading = function() {
     this.loading_div.style = "";
 };
+
+viewer.updateFeatureStyle = function(feature, mode) {
+    var geo = feature.getGeometry();
+
+    if (geo !== undefined) {
+        if (geo instanceof ol.geom.Polygon || geo instanceof ol.geom.LineString) { // Border
+            switch (mode) {
+                case 'default':
+                    feature.setStyle(viewer.styles.territory);
+                    break;
+                case 'edit':
+                    feature.setStyle(viewer.styles.territoryEdit);
+                    break;
+                case 'select':
+                    feature.setStyle(viewer.styles.territorySelect);
+                    break;
+                default:
+                    feature.setStyle(null);
+            }
+        } else if (geo instanceof ol.geom.Point) { // Marker
+            switch (mode) {
+                case 'default':
+                    feature.setStyle(viewer.styles.marker);
+                    break;
+                case 'edit':
+                    feature.setStyle(viewer.styles.markerEdit);
+                    break;
+                case 'select':
+                    feature.setStyle(viewer.styles.markerSelect);
+                    break;
+                default:
+                    feature.setStyle(null);
+            }
+        }
+    }
+}
 
 viewer.enableInteractions = function() {
     var interaction_count_ = 2;
@@ -362,8 +418,10 @@ viewer.ctrl.KeyboardDrawInteractions.prototype.handleEvent = function(evt) {
                 break;
             case "z":
                 if (orig.ctrlKey) {
-                    viewer.undoDraw(false);
-                    return false;
+                    if (viewer.drawInteraction !== undefined) {
+                        viewer.undoDraw(false);
+                        return false;
+                    }
                 }
                 break;
             default:
@@ -544,98 +602,7 @@ viewer.initMap = function() {
     viewer.groups.push(dtkGroup);
 
     // init styles
-    var styles = {};
-    styles.territory = new ol.style.Style({
-        zIndex: 1,
-        fill: new ol.style.Fill({
-            color: 'rgba(255, 121, 97, 0.0)',
-        }),
-        stroke: new ol.style.Stroke({
-            color: '#f44336',
-            width: 3,
-            lineDash: [20, 15, 10, 15],
-            lineDashOffset: 10,
-        }),
-        image: new ol.style.Circle({
-            radius: 8,
-            fill: new ol.style.Fill({
-                color: '#f44336',
-            }),
-        }),
-    });
-
-    styles.territorySelect = new ol.style.Style({
-        zIndex: 1,
-        fill: new ol.style.Fill({
-            color: 'rgba(255, 121, 97, 0.2)',
-        }),
-        stroke: new ol.style.Stroke({
-            color: '#f44336',
-            width: 4,
-            lineDash: [20, 15, 10, 15],
-            lineDashOffset: 10,
-        }),
-        image: new ol.style.Circle({
-            radius: 8,
-            fill: new ol.style.Fill({
-                color: '#f44336',
-            }),
-        }),
-    });
-
-    styles.territoryEdit = new ol.style.Style({
-        zIndex: 1,
-        fill: new ol.style.Fill({
-            color: 'rgba(244, 67, 54, 0.2)',
-        }),
-        stroke: new ol.style.Stroke({
-            color: '#b9000a',
-            width: 4,
-        }),
-        image: new ol.style.Circle({
-            radius: 9,
-            fill: new ol.style.Fill({
-                color: '#b9000a',
-            }),
-        }),
-    });
-
-    styles.TextRed = new ol.style.Fill({
-        color: '#ff0000',
-    });
-
-    viewer.styles = {};
-    viewer.styles.territory = function(a, b) {
-        var [ft, res] = (b === undefined) ? [this, a] : [a, b];
-        return [styles.territory.clone()];
-    };
-
-    viewer.styles.territorySelect = function(a, b) {
-        var [ft, res] = (b === undefined) ? [this, a] : [a, b];
-
-        var style = styles.territorySelect.clone();
-        style.setText(new ol.style.Text({
-            font: '24pt Roboto, sans-serif',
-            text: ft.get('title') || '',
-            textAlign: 'center',
-        }));
-
-        return [style];
-    };
-
-    viewer.styles.territoryEdit = function(a, b) {
-        var [ft, res] = (b === undefined) ? [this, a] : [a, b];
-
-        var style = styles.territoryEdit.clone();
-        style.setText(new ol.style.Text({
-            font: '22pt Roboto, sans-serif',
-            text: (ft.get('title') || '') + ' (EDIT)',
-            textAlign: 'center',
-            fill: styles.TextRed,
-        }));
-
-        return [style];
-    };
+    viewer.initStyles();
 
     // Initialize Territory Layers
     viewer.territoryGroup = new ol.layer.Group({
@@ -657,14 +624,14 @@ viewer.initMap = function() {
         var active = evt.target.get(evt.key);
         if (!active) {
             console.log("Deselect all features");
-            evt.target.getFeatures().forEach((ft) => ft.setStyle(viewer.styles.territory));
+            evt.target.getFeatures().forEach((ft) => viewer.updateFeatureStyle(ft, 'default'));
             evt.target.getFeatures().clear();
         }
     }, false);
 
     select.addEventListener('select', function(evt) {
-        evt.selected.forEach((ft) => ft.setStyle(viewer.styles.territorySelect));
-        evt.deselected.forEach((ft) => ft.setStyle(viewer.styles.territory));
+        evt.selected.forEach((ft) => viewer.updateFeatureStyle(ft, 'select'));
+        evt.deselected.forEach((ft) => viewer.updateFeatureStyle(ft, 'default'));
     }, false);
 
     viewer.map.addInteraction(select);
@@ -673,6 +640,200 @@ viewer.initMap = function() {
     viewer.groups.forEach(function(group) {
         viewer.map.addLayer(group);
     });
+};
+
+// Initialize feature styles
+viewer.initStyles = function() {
+    var styles = {};
+    styles.territory = new ol.style.Style({
+        zIndex: 1,
+        fill: new ol.style.Fill({
+            color: 'rgba(255, 121, 97, 0.0)',
+        }),
+        stroke: new ol.style.Stroke({
+            color: '#f44336',
+            width: 3,
+            lineDash: [20, 15, 10, 15],
+            lineDashOffset: 10,
+        }),
+        /*image: new ol.style.Circle({
+            radius: 8,
+            fill: new ol.style.Fill({
+                color: '#f44336',
+            }),
+        }),*/
+    });
+
+    styles.territorySelect = styles.territory.clone();
+    styles.territorySelect.getFill().setColor('rgba(255, 121, 97, 0.2)');
+    styles.territorySelect.getStroke().setWidth(4);
+
+    styles.territoryEdit = new ol.style.Style({
+        zIndex: 1,
+        fill: new ol.style.Fill({
+            color: 'rgba(244, 67, 54, 0.2)',
+        }),
+        stroke: new ol.style.Stroke({
+            color: '#b9000a',
+            width: 4,
+        }),
+        /*image: new ol.style.Circle({
+            radius: 9,
+            fill: new ol.style.Fill({
+                color: '#b9000a',
+            }),
+        }),*/
+    });
+
+    styles.marker = new ol.style.Style({
+        zIndex: 2,
+        image: new ol.style.Circle({
+            radius: 5,
+            fill: new ol.style.Fill({
+                color: '#b9000a',
+            }),
+        }),
+    });
+
+    styles.markerSelect = styles.marker.clone();
+
+    styles.markerEdit = new ol.style.Style({
+        zIndex: 2,
+        image: new ol.style.Circle({
+            radius: 9,
+            fill: new ol.style.Fill({
+                color: '#cdcdcd',
+            }),
+        }),
+    });
+
+    styles.textRed = new ol.style.Text({
+        font: '13pt Roboto, sans-serif',
+        text: 'Text',
+        textAlign: 'center',
+        fill: new ol.style.Fill({
+            color: '#ff0000',
+        }),
+    });
+
+    styles.textBlack = new ol.style.Text({
+        font: '13pt Roboto, sans-serif',
+        text: 'Text',
+        textAlign: 'center',
+        fill: new ol.style.Fill({
+            color: '#040404',
+        }),
+    });
+
+    // Global styles
+    viewer.styles = {};
+    viewer.styles.draw = new ol.style.Style({
+        zIndex: 1,
+        fill: new ol.style.Fill({
+            color: 'rgba(255, 121, 97, 0.2)',
+        }),
+        stroke: new ol.style.Stroke({
+            color: '#f44336',
+            width: 4,
+        }),
+        image: new ol.style.Circle({
+            radius: 6,
+            fill: new ol.style.Fill({
+                color: '#f44336',
+            }),
+        }),
+    });
+    viewer.styles.modify = viewer.styles.draw;
+
+    // Feature style cache
+    styles.cache = {
+        normal: {},
+        select: {},
+        edit: {},
+    };
+
+    viewer.styles.territory = function(a, b) {
+        var [ft, res] = (b === undefined) ? [this, a] : [a, b];
+        var id = ft.getId() || 'noid';
+
+        var style = styles.cache.normal[id];
+        if (!style) {
+            style = styles.cache.normal[id] = styles.territory.clone();
+        }
+
+        return [style];
+    };
+
+    viewer.styles.territorySelect = function(a, b) {
+        var [ft, res] = (b === undefined) ? [this, a] : [a, b];
+        var id = ft.getId() || 'noid';
+
+        var style = styles.cache.select[id];
+        if (!style) {
+            style = styles.territorySelect.clone();
+            style.setText(styles.textBlack.clone());
+        }
+
+        style.getText().setFont(viewer.scalePT(22, res) + ' Roboto, sans-serif');
+        style.getText().setText(ft.get('title') || '');
+
+        return [style];
+    };
+
+    viewer.styles.territoryEdit = function(a, b) {
+        var [ft, res] = (b === undefined) ? [this, a] : [a, b];
+        var id = ft.getId() || 'noid';
+
+        var style = styles.cache.edit[id];
+        if (!style) {
+            style = styles.territoryEdit.clone();
+            style.setText(styles.textRed.clone());
+        }
+
+        style.getText().setFont(viewer.scalePT(24, res) + ' Roboto, sans-serif');
+        style.getText().setText((ft.get('title') || '') + '\n(EDIT)');
+
+        return [style];
+    };
+
+    viewer.styles.marker = function(a, b) {
+        var [ft, res] = (b === undefined) ? [this, a] : [a, b];
+        var id = ft.getId() || 'noid';
+
+        var style = styles.cache.normal[id];
+        if (!style) {
+            style = styles.marker.clone();
+            style.setText(styles.textBlack.clone());
+
+            style.getText().setOffsetY(-6);
+            style.getText().setTextBaseline('bottom');
+        }
+
+        style.getText().setFont(viewer.scalePT(22, res) + ' Roboto, sans-serif');
+        style.getText().setText(ft.get('title') || '');
+
+        return [style];
+    };
+    viewer.styles.markerSelect = viewer.styles.marker;
+
+    viewer.styles.markerEdit = function(a, b) {
+        var [ft, res] = (b === undefined) ? [this, a] : [a, b];
+        var id = ft.getId() || 'noid';
+
+        var style = styles.cache.edit[id];
+        if (!style) {
+            style = styles.markerEdit.clone();
+            style.setText(styles.textRed.clone());
+
+            style.getText().setOffsetY(-6 - 24);
+            style.getText().setTextBaseline('bottom');
+        }
+
+        style.getText().setFont(viewer.scalePT(24, res) + ' Roboto, sans-serif');
+        style.getText().setText((ft.get('title') || '') + '\n(EDIT)');
+
+        return [style];
+    };
 };
 
 // Initialize contextmenu
@@ -732,6 +893,17 @@ viewer.addContextMenu = function() {
         },
     ];
     var draw_items = [
+        {
+            text: 'Add Marker',
+            callback: function(item) {
+                var text = prompt("Enter text for new marker:");
+                if (text === null) {
+                    console.warn("drawMarker(): cancel")
+                } else {
+                    viewer.drawMarker(text);
+                }
+            },
+        },
         {
             text: 'Draw',
             items: [
@@ -945,8 +1117,25 @@ viewer.drawLine = function() {
     viewer.startDraw(activeLayer.getSource(), 'LineString');
 };
 
+// Start drawing of a Marker
+viewer.drawMarker = function(text) {
+    var activeLayer = undefined;
+    viewer.forEachLayerIn(viewer.territoryGroup, function(layer) {
+        if (activeLayer === undefined) {
+            activeLayer = layer;
+            return false;
+        }
+    });
+
+    if (activeLayer === undefined) {
+        throw new viewer.ex.DrawTerritoryException("No drawable Layer found");
+    }
+
+    viewer.startDraw(activeLayer.getSource(), 'Point', text);
+};
+
 // Add Draw interaction of type to source
-viewer.startDraw = function(source, type) {
+viewer.startDraw = function(source, type, title) {
     viewer.setChanged();
     console.log("viewer.startDraw(" + type + ")");
 
@@ -962,6 +1151,7 @@ viewer.startDraw = function(source, type) {
         source: source,
         type: type,
         freehand: false,
+        style: viewer.styles.draw,
         condition: function(evt) {
             return evt.originalEvent.button === 0 && ol.events.condition.noModifierKeys(evt);
         },
@@ -971,8 +1161,9 @@ viewer.startDraw = function(source, type) {
     });
     draw.addEventListener('drawend', function(evt) {
         evt.feature.setId(ol.control.LayerSwitcher.uuid());
-        evt.feature.setStyle(viewer.styles.territory);
-        evt.feature.set('title', "");
+        evt.feature.set('title', title || "");
+
+        viewer.updateFeatureStyle(evt.feature, 'default');
 
         viewer.stopDraw();
     }, false);
@@ -1119,6 +1310,7 @@ viewer.startEdit = function(feature, source) {
     var modify = new ol.interaction.Modify({
         features: new ol.Collection([feature]),
         pixelTolerance: 6,
+        style: viewer.styles.modify,
     });
 
     var control = new viewer.ctrl.KeyboardDrawInteractions();
@@ -1130,7 +1322,7 @@ viewer.startEdit = function(feature, source) {
     viewer.map.addInteraction(modify);
     viewer.map.addInteraction(control);
 
-    feature.setStyle(viewer.styles.territoryEdit);
+    viewer.updateFeatureStyle(feature, 'edit');
 
     if (source !== undefined) {
         var snap = new ol.interaction.Snap({
@@ -1152,7 +1344,7 @@ viewer.stopEdit = function() {
     viewer.enableInteractions();
 
     if (viewer.modifyFeature !== undefined) {
-        viewer.modifyFeature.setStyle(viewer.styles.territory);
+        viewer.updateFeatureStyle(viewer.modifyFeature, 'default');
         viewer.modifyFeature = undefined;
     }
 
@@ -1265,6 +1457,10 @@ viewer.loadTerritory = function(file, doneCallback) {
                 callback(false, "Cannot read saved features: \"" + ex + "\"");
                 return;
             }
+
+            f.forEach(function (ft) {
+                viewer.updateFeatureStyle(ft, 'default');
+            });
 
             var l = new ol.layer.Vector({
                 title: t.title,
