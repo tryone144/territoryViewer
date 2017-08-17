@@ -19,6 +19,9 @@ DEFAULTS = {
 window.TerritoryViewer = {};
 var viewer = window.TerritoryViewer;
 
+viewer.NAME = 'TerritoryViewer';
+viewer.VERSION = '0.1.0';
+
 
 // =====================================
 // Internal Helper
@@ -228,7 +231,9 @@ viewer.showHelp = function() {
 };
 
 viewer.showAbout = function() {
-    console.log("FIXME: about()");
+    var msg = viewer.NAME + " v" + viewer.VERSION + "\n© 2017 Bernd Busse";
+    console.log("about():\n" + msg);
+    alert(msg);
 };
 
 
