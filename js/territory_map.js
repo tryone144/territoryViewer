@@ -8,10 +8,10 @@
 // DTK NRW Copyright: © 2017 Bezirksregierung Köln / Data licence Germany – attribution – version 2.0
 
 
-// FIXME: don't rely on fixed values
+// Safe place to start at
 DEFAULTS = {
-    center: [7.2499820, 51.1974775],
-    kingdom_hall: [7.2553192, 51.1779812],
+    center: [8.2395502, 50.3384472],
+    zoom: 6,
 };
 
 
@@ -449,6 +449,8 @@ viewer.initMap = function() {
     viewer.export_div = document.getElementById("export-map");
     viewer.loading_div = document.getElementById("loading-spinner");
 
+    console.log("init(): " + viewer.NAME + " v" + viewer.VERSION);
+
     // Init editMode
     var opts = viewer.tools.parseHash(window.location.hash);
     viewer.editMode = !!opts.editMode;
@@ -505,7 +507,7 @@ viewer.initMap = function() {
         view: new ol.View({
             projection: 'EPSG:3857',
             center: viewer.coordToProj(DEFAULTS.center),
-            zoom: 13,
+            zoom: DEFAULTS.zoom,
         }),
     });
     viewer.view = viewer.map.getView();
