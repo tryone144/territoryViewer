@@ -20,7 +20,7 @@ window.TerritoryViewer = {};
 var viewer = window.TerritoryViewer;
 
 viewer.NAME = 'TerritoryViewer';
-viewer.VERSION = '0.1.0';
+viewer.VERSION = '0.1.1';
 
 
 // =====================================
@@ -74,6 +74,26 @@ viewer.extentsOf = function(group) {
     });
 
     return gext;
+};
+
+viewer.handleVisibilityChange = function(evt) {
+    if (evt.target.get(evt.key) === false) { // Hide Layer
+        evt.target.getSource().getFeatures().forEach(function(ft) {
+            viewer.updateFeatureStyle(ft, 'default');
+            if (viewer.selectedFeatures.remove(ft) !== undefined) {
+                ft.set('tv-selectedhidden', true);
+            } else {
+                ft.set('tv-selectedhidden', false);
+            }
+        });
+    } else { // Unhide Layer
+        evt.target.getSource().getFeatures().forEach(function(ft) {
+            if (ft.get('tv-selectedhidden') === true) {
+                viewer.updateFeatureStyle(ft, 'select');
+                viewer.selectedFeatures.push(ft)
+            }
+        });
+    }
 };
 
 viewer.scalePT = function(base, res) {
@@ -619,8 +639,10 @@ viewer.initMap = function() {
     viewer.groups.push(viewer.territoryGroup);
 
     // Special select Interaction
+    viewer.selectedFeatures = new ol.Collection();
     var select = new ol.interaction.Select({
         //style: viewer.styles.territorySelect,
+        features: viewer.selectedFeatures,
         condition: ol.events.condition.click,
         toggleCondition: ol.events.condition.click,
         filter: (ft, l) => viewer.colContains(viewer.territoryGroup.getLayers(), l) && (ft.getGeometry() instanceof ol.geom.Polygon),
@@ -1086,6 +1108,7 @@ viewer.addTerritoryLayer = function(name) {
             features: new ol.Collection(),
         }),
     });
+    l.addEventListener('change:visible', viewer.handleVisibilityChange, false);
 
     viewer.activeLayer = l;
     viewer.territoryGroup.getLayers().push(l);
@@ -1095,6 +1118,17 @@ viewer.addTerritoryLayer = function(name) {
 viewer.deleteTerritoryLayer = function(layer) {
     viewer.setChanged();
     console.log("deleteTerritoryLayer(" + (layer.get('title') || 'unnamed') + ")");
+
+    if (viewer.selectedFeatures.getLength() > 0) {
+        layer.getSource().getFeatures().forEach(function(ft) {
+            viewer.selectedFeatures.forEach(function(sel) {
+                if (sel === ft) {
+                    viewer.selectedFeatures.remove(ft);
+                    return false;
+                }
+            })
+        });
+    }
 
     viewer.territoryGroup.getLayers().remove(layer);
 };
@@ -1286,6 +1320,15 @@ viewer.featureDelete = function(feature) {
     viewer.setChanged();
     var id = feature.getId();
     console.log("viewer.featureDelete(" + id + ")");
+
+    if (viewer.selectedFeatures.getLength() > 0) {
+        viewer.selectedFeatures.forEach(function(sel) {
+            if (sel === feature) {
+                viewer.selectedFeatures.remove(feature);
+                return false;
+            }
+        });
+    }
 
     var activeSource = undefined;
     if (id !== undefined) {
@@ -1506,6 +1549,7 @@ viewer.loadTerritory = function(file, doneCallback) {
         var lc = viewer.territoryGroup.getLayers();
         lc.clear();
         for (var i = 0; i < territories.length; ++i) {
+            territories[i].addEventListener('change:visible', viewer.handleVisibilityChange, false);
             lc.push(territories[i]);
         }
 
