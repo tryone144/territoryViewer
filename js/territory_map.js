@@ -352,12 +352,16 @@ viewer.ctrl.FileControls = function(opt_options) {
     });
 
     // Button "Export Image"
-    this.btnExportViewport_ = viewer.tools.createButton();
-    this.btnExportExtent_ = viewer.tools.createButton();
+    this.btnExportAll_ = viewer.tools.createButton({
+        icon: 'fa-camera-retro',
+        title: "Export as image",
+        that: this,
+        handler: viewer.ctrl.FileControls.prototype.handleExportAll,
+    });
 
     this.btnExportViewport_ = viewer.tools.createButton({
         icon: 'fa-picture-o',
-        title: "Export as image",
+        title: "Export current viewport",
         that: this,
         handler: viewer.ctrl.FileControls.prototype.handleExportViewport,
     });
@@ -367,6 +371,7 @@ viewer.ctrl.FileControls = function(opt_options) {
     element.className = 'tv-file-controls ol-unselectable ol-control';
     element.appendChild(this.btnLoad_);
     element.appendChild(this.btnSave_);
+    element.appendChild(this.btnExportAll_);
     element.appendChild(this.btnExportViewport_);
 
     if (!viewer.editMode) {
@@ -420,6 +425,16 @@ viewer.ctrl.FileControls.prototype.handleSave = function(evt) {
         viewer.resetChanged();
         console.log("saveTerritory() finished");
     });
+};
+
+viewer.ctrl.FileControls.prototype.handleExportAll = function(evt) {
+    var scale = prompt("Enter scale (at 150dpi):");
+
+    if (scale === null || isNaN(Number(scale))) {
+        console.warn("exportExtentAtScale(): cancel")
+    } else {
+        viewer.exportLayerAtScale(viewer.territoryGroup, Number(scale));
+    }
 };
 
 viewer.ctrl.FileControls.prototype.handleExportViewport = function(evt) {
@@ -995,6 +1010,38 @@ viewer.addContextMenu = function() {
             items.push('-');
         }
 
+        // Items: export layer
+        var export_entries = [];
+        viewer.forEachLayerIn(viewer.territoryGroup, function(layer) {
+            var title = layer.get('title') || "Layer #" + delete_entries.length;
+
+            export_entries.push({
+                text: title,
+                data: {
+                    target: layer,
+                },
+                callback: function(item) {
+                    var scale = prompt("Enter scale (at 150dpi):");
+                    if (scale === null || isNaN(Number(scale))) {
+                        console.warn("exportExtentAtScale(): cancel")
+                    } else {
+                        viewer.exportLayerAtScale(layer, Number(scale));
+                    }
+                },
+            });
+        });
+
+        if (export_entries.length > 0) {
+            items.push({
+                text: 'Export Layer',
+                items: export_entries,
+            });
+
+            if (!viewer.editMode) {
+                items.push('-');
+            }
+        }
+
         // Items: layer management (add, delete, rename)
         if (viewer.editMode) {
             items.push({
@@ -1104,48 +1151,6 @@ viewer.addContextMenu = function() {
 
             items.push('-');
         }
-
-        // Items: export layer
-        items.push({
-            text: 'Export all',
-            callback: function(item) {
-                var scale = prompt("Enter scale (at 150dpi):");
-                if (scale === null || isNaN(Number(scale))) {
-                    console.warn("exportExtentAtScale(): cancel")
-                } else {
-                    viewer.exportLayerAtScale(viewer.territoryGroup, Number(scale));
-                }
-            },
-        });
-
-        var export_entries = [];
-        viewer.forEachLayerIn(viewer.territoryGroup, function(layer) {
-            var title = layer.get('title') || "Layer #" + delete_entries.length;
-
-            export_entries.push({
-                text: title,
-                data: {
-                    target: layer,
-                },
-                callback: function(item) {
-                    var scale = prompt("Enter scale (at 150dpi):");
-                    if (scale === null || isNaN(Number(scale))) {
-                        console.warn("exportExtentAtScale(): cancel")
-                    } else {
-                        viewer.exportLayerAtScale(layer, Number(scale));
-                    }
-                },
-            });
-        });
-
-        if (export_entries.length > 0) {
-            items.push({
-                text: 'Export Layer',
-                items: export_entries,
-            });
-        }
-
-        items.push('-');
 
         // Rebuild contextmenu
         viewer.contextmenu.clear();
