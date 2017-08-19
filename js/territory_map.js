@@ -54,26 +54,44 @@ viewer.colContains = function(collection, item) {
     return found;
 }
 
-viewer.extentsOf = function(group) {
+viewer.extentsOfGroup = function(group) {
     var gext = null;
 
-    viewer.forEachLayerIn(viewer.territoryGroup, function(layer) {
-        layer.getSource().getFeatures().forEach(function(feature) {
-            var mext = feature.getGeometry().getExtent();
+    viewer.forEachLayerIn(group, function(layer) {
+        var mext = viewer.extentsOfLayer(layer);
 
-            if (gext !== null) {
-                gext = [gext[0] < mext[0] ? gext[0] : mext[0],
-                        gext[1] < mext[1] ? gext[1] : mext[1],
-                        gext[2] > mext[2] ? gext[2] : mext[2],
-                        gext[3] > mext[3] ? gext[3] : mext[3],
-                ];
-            } else {
-                gext = mext;
-            }
-        });
+        if (gext !== null) {
+            gext = [gext[0] < mext[0] ? gext[0] : mext[0],
+                    gext[1] < mext[1] ? gext[1] : mext[1],
+                    gext[2] > mext[2] ? gext[2] : mext[2],
+                    gext[3] > mext[3] ? gext[3] : mext[3],
+            ];
+        } else {
+            gext = mext;
+        }
     });
 
     return gext;
+};
+
+viewer.extentsOfLayer = function(layer) {
+    var lext = null;
+
+    layer.getSource().getFeatures().forEach(function(feature) {
+        var mext = feature.getGeometry().getExtent();
+
+        if (lext !== null) {
+            lext = [lext[0] < mext[0] ? lext[0] : mext[0],
+                    lext[1] < mext[1] ? lext[1] : mext[1],
+                    lext[2] > mext[2] ? lext[2] : mext[2],
+                    lext[3] > mext[3] ? lext[3] : mext[3],
+            ];
+        } else {
+            lext = mext;
+        }
+    });
+
+    return lext;
 };
 
 viewer.handleVisibilityChange = function(evt) {
@@ -300,7 +318,7 @@ viewer.ctrl.FileControls = function(opt_options) {
                 if (success === true) {
                     console.log("loadTerritory() finished");
                     viewer.resetChanged();
-                    viewer.view.fit(viewer.extentsOf(viewer.territoryGroup), {
+                    viewer.view.fit(viewer.extentsOfGroup(viewer.territoryGroup), {
                         size: viewer.map.getSize(),
                         padding: [20, 20, 20, 20],
                     });
@@ -904,135 +922,106 @@ viewer.addContextMenu = function() {
         }
     });
 
-    // Specify different menu items
-    var default_items = [
-        {
-            text: 'Help',
-            callback: (item) => viewer.showHelp(),
-        },
-        {
-            text: 'About',
-            callback: (item) => viewer.showAbout(),
-        },
-    ];
-    var modify_items = [
-        {
-            text: 'Finish',
-            callback: (item) => viewer.stopEdit(),
-        },
-    ];
-    var draw_items = [
-        {
-            text: 'Add Marker',
-            callback: function(item) {
-                var text = prompt("Enter text for new marker:");
-                if (text === null) {
-                    console.warn("drawMarker(): cancel")
-                } else {
-                    viewer.drawMarker(text);
-                }
-            },
-        },
-        {
-            text: 'Draw',
-            items: [
-                {
-                    text: 'Polygon',
-                    callback: (item) => viewer.drawPolygon(),
-                },
-                {
-                    text: 'Line',
-                    callback: (item) => viewer.drawLine(),
-                },
-            ],
-        },
-    ];
-    var layer_items = [
-        {
-            text: 'Add Layer',
-            callback: function(item) {
-                var name = prompt("Enter name for new layer:");
-                if (name === null) {
-                    console.warn("addTerritoryLayer(): cancel")
-                } else {
-                    viewer.addTerritoryLayer(name);
-                }
-            },
-        },
-    ];
-    var feature_items = [
-        {
-            text: 'Delete',
-            callback: (item) => viewer.featureDelete(item.data.target),
-        },
-        {
-            text: 'Modify',
-            callback: (item) => viewer.featureEdit(item.data.target),
-        },
-        {
-            text: 'Rename',
-            callback: function(item) {
-                var name = prompt("Enter new name for '" + item.data.oldName + "':", item.data.oldName);
-                if (name === null) {
-                    console.warn("viewer.featureRename(): cancel");
-                } else {
-                    viewer.featureRename(item.data.target, name);
-                }
-            },
-        },
-    ];
-
     // Add context sensitive actions
     viewer.contextmenu.addEventListener('open', function(evt) {
         var feature = viewer.map.forEachFeatureAtPixel(evt.pixel, (ft, l) => ft, {
             hitTolerance: 6,
         });
 
-        viewer.contextmenu.clear();
         var items = [];
 
-        // Add additional items, when in editMode
-        if (viewer.editMode) {
+        // Items: active editing (modify)
+        if (viewer.modifyInteraction !== undefined) {
+            items.push({
+                text: 'Finish',
+                callback: (item) => viewer.stopEdit(),
+            });
 
-            // Editing specific items
-            if (viewer.modifyInteraction !== undefined) {
-                items = items.concat(modify_items);
-                items.push('-');
-            }
+            items.push('-');
+        }
 
-            // Feature specific items
-            if (feature) {
-                for (var i = 0; i < feature_items.length; ++i) {
-                    feature_items[i].data = {
+        // Items: feature specific (export, rename, modify, delete)
+        if (feature) {
+            items.push({
+                text: 'Export',
+                data: {
+                    target: feature,
+                },
+                callback: function(item) {
+                    var ext = item.data.target.getGeometry().getExtent();
+                    var scale = prompt("Enter scale (at 150dpi):");
+                    if (scale === null || isNaN(Number(scale))) {
+                        console.warn("exportExtentAtScale(): cancel")
+                    } else {
+                        viewer.exportExtentAtScale(ext, Number(scale));
+                    }
+                },
+            });
+
+            if (viewer.editMode) {
+                items.push({
+                    text: 'Rename',
+                    data: {
                         target: feature,
-                        oldName: feature.get('title') || "",
-                    };
-                }
+                        oldName: feature.get('title') || '',
+                    },
+                    callback: function(item) {
+                        var name = prompt("Enter new name for '" + item.data.oldName + "':", item.data.oldName);
+                        if (name === null) {
+                            console.warn("viewer.featureRename(): cancel");
+                        } else {
+                            viewer.featureRename(item.data.target, name);
+                        }
+                    },
+                });
 
-                items = items.concat(feature_items);
-                items.push('-');
+                items.push({
+                    text: 'Modify',
+                    data: {
+                        target: feature,
+                    },
+                    callback: (item) => viewer.featureEdit(item.data.target),
+                });
+
+                items.push({
+                    text: 'Delete',
+                    data: {
+                        target: feature,
+                    },
+                    callback: (item) => viewer.featureDelete(item.data.target),
+                });
             }
 
-            // Layer specific items
-            items = items.concat(layer_items);
+            items.push('-');
+        }
 
-            var delete_entries = [];
+        // Items: layer management (add, delete, rename)
+        if (viewer.editMode) {
+            items.push({
+                text: 'Add Layer',
+                callback: function(item) {
+                    var name = prompt("Enter name for new layer:");
+                    if (name === null) {
+                        console.warn("addTerritoryLayer(): cancel")
+                    } else {
+                        viewer.addTerritoryLayer(name);
+                    }
+                },
+            });
+
             var rename_entries = [];
+            var delete_entries = [];
             var select_entries = [];
 
             viewer.forEachLayerIn(viewer.territoryGroup, function(layer) {
                 var title = layer.get('title') || "Layer #" + delete_entries.length;
 
-                delete_entries.push({
-                    text: title,
-                    callback: (item) => viewer.deleteTerritoryLayer(item.data.target),
-                    data: {
-                        target: layer,
-                    },
-                });
-
                 rename_entries.push({
                     text: title,
+                    data: {
+                        target: layer,
+                        oldName: title,
+                    },
                     callback: function(item) {
                         var name = prompt("Enter new name for '" + item.data.oldName + "':", item.data.oldName);
                         if (name === null || name === item.data.oldName) {
@@ -1041,27 +1030,24 @@ viewer.addContextMenu = function() {
                             viewer.renameTerritoryLayer(item.data.target, name);
                         }
                     },
+                });
+
+                delete_entries.push({
+                    text: title,
                     data: {
                         target: layer,
-                        oldName: title,
                     },
+                    callback: (item) => viewer.deleteTerritoryLayer(item.data.target),
                 });
 
                 select_entries.push({
                     text: title,
-                    callback: (item) => viewer.selectLayer(item.data.target),
                     data: {
                         target: layer,
                     },
+                    callback: (item) => viewer.selectLayer(item.data.target),
                 });
             });
-
-            if (delete_entries.length > 0) {
-                items.push({
-                    text: 'Delete Layer',
-                    items: delete_entries,
-                });
-            }
 
             if (rename_entries.length > 0) {
                 items.push({
@@ -1070,23 +1056,110 @@ viewer.addContextMenu = function() {
                 });
             }
 
+            if (delete_entries.length > 0) {
+                items.push({
+                    text: 'Delete Layer',
+                    items: delete_entries,
+                });
+            }
+
             items.push('-');
 
+            // Items: drawing target
             if (select_entries.length > 0) {
                 items.push({
                     text: 'Draw Target',
                     items: select_entries,
                 });
             }
+        }
 
-            // Drawing specific items
-            items = items.concat(draw_items);
+        // Items: draw actions (polygon, line, marker)
+        if (viewer.editMode) {
+            items.push({
+                text: 'Draw',
+                items: [
+                    {
+                        text: 'Polygon',
+                        callback: (item) => viewer.drawPolygon(),
+                    },
+                    {
+                        text: 'Line',
+                        callback: (item) => viewer.drawLine(),
+                    },
+                ],
+            });
+
+            items.push({
+                text: 'Add Marker',
+                callback: function(item) {
+                    var text = prompt("Enter text for new marker:");
+                    if (text === null) {
+                        console.warn("drawMarker(): cancel")
+                    } else {
+                        viewer.drawMarker(text);
+                    }
+                },
+            });
+
             items.push('-');
         }
 
-        // Default items
+        // Items: export layer
+        items.push({
+            text: 'Export all',
+            callback: function(item) {
+                var scale = prompt("Enter scale (at 150dpi):");
+                if (scale === null || isNaN(Number(scale))) {
+                    console.warn("exportExtentAtScale(): cancel")
+                } else {
+                    viewer.exportLayerAtScale(viewer.territoryGroup, Number(scale));
+                }
+            },
+        });
+
+        var export_entries = [];
+        viewer.forEachLayerIn(viewer.territoryGroup, function(layer) {
+            var title = layer.get('title') || "Layer #" + delete_entries.length;
+
+            export_entries.push({
+                text: title,
+                data: {
+                    target: layer,
+                },
+                callback: function(item) {
+                    var scale = prompt("Enter scale (at 150dpi):");
+                    if (scale === null || isNaN(Number(scale))) {
+                        console.warn("exportExtentAtScale(): cancel")
+                    } else {
+                        viewer.exportLayerAtScale(layer, Number(scale));
+                    }
+                },
+            });
+        });
+
+        if (export_entries.length > 0) {
+            items.push({
+                text: 'Export Layer',
+                items: export_entries,
+            });
+        }
+
+        items.push('-');
+
+        // Rebuild contextmenu
+        viewer.contextmenu.clear();
         viewer.contextmenu.extend(items);
-        viewer.contextmenu.extend(default_items);
+        viewer.contextmenu.extend([
+            {
+                text: 'Help',
+                callback: (item) => viewer.showHelp(),
+            },
+            {
+                text: 'About',
+                callback: (item) => viewer.showAbout(),
+            },
+        ]);
     });
 };
 
@@ -1646,7 +1719,6 @@ viewer.exportCanvas = function(doneCallback) {
     };
 
     // Start export -> reload tiles
-    console.log("Export Map");
     self.forEachLayer(function(layer) {
         var source = layer.getSource();
         source.on('tileloadstart', tileLoadStart);
@@ -1658,7 +1730,7 @@ viewer.exportCanvas = function(doneCallback) {
 };
 
 // Export current viewport as png
-viewer.exportViewport = function () {
+viewer.exportViewport = function() {
     var self = this;
 
     // Save current map viewport
@@ -1675,238 +1747,106 @@ viewer.exportViewport = function () {
 
     // Do actual export
     self.exportCanvas(function() {
-        // Reset previous viewport
+        // Reset to previous viewport
         self.setRender();
         self.resetMap(mapsave);
         self.map.render();
     });
-}
+};
+
+// Export viewport fitted with extent as png
+viewer.exportLayerAtScale = function(layer, scale) {
+    var self = this;
+
+    var target_dpi = 150;
+
+    var resBB = 25.4 * scale / (1000 * target_dpi);
+    var zoomBB = Math.round(self.view.getZoomForResolution(resBB));
+
+    // Do export with zoom level
+    viewer.exportLayerAtZoom(layer, zoomBB);
+};
+
+viewer.exportLayerAtZoom = function(layer, zoom) {
+    var self = this;
+
+    var extents;
+    if (layer instanceof ol.layer.Group) {
+        extents = viewer.extentsOfGroup(layer);
+    } else if (layer instanceof ol.layer.Vector) {
+        extents = viewer.extentsOfLayer(layer);
+    } else {
+        extents = viewer.extentsOfGroup(viewer.territoryGroup);
+    }
+
+    viewer.exportExtentAtZoom(extents, zoom);
+};
+
+viewer.exportExtentAtScale = function(extent, scale) {
+    var self = this;
+
+    var target_dpi = 150;
+
+    var resBB = 25.4 * scale / (1000 * target_dpi);
+    var zoomBB = Math.round(self.view.getZoomForResolution(resBB));
+
+    // Do export with zoom level
+    viewer.exportExtentAtZoom(extent, zoomBB);
+};
+
+viewer.exportExtentAtZoom = function(extent, zoom) {
+    var self = this;
+
+    // Save current map viewport
+    var mapsave = {
+        'size': self.map.getSize(),
+        'center': self.view.getCenter(),
+        'zoom': self.view.getZoom(),
+        'rotation': self.view.getRotation(),
+    };
+
+    if (extent == null) {
+        console.warn("No boundaries found! Just export the current viewport");
+        return viewer.exportViewport();
+    }
+
+    var target_dpi = 150;
+    var margin = [100, 100, 100, 100];
+
+    var res = self.view.getResolutionForZoom(zoom);
+
+    var w_px = Math.ceil((extent[2] - extent[0]) / res) + margin[2] + margin[3];
+    var h_px = Math.ceil((extent[3] - extent[1]) / res) + margin[0] + margin[1];
+
+    // Set export viewport
+    self.setExport();
+    self.map.setSize([w_px, h_px]);
+    self.view.fit(extent, {
+        size: self.map.getSize(),
+        padding: margin,
+    });
+
+    var proj = self.view.getProjection();
+    var e_zoom = self.view.getZoom();
+    var e_res = self.view.getResolution();
+    var e_scale = Math.round((e_res * proj.getMetersPerUnit()) * (1000 * target_dpi) / 25.4);
+
+    console.log("Export at Zoom " + e_zoom + " (" + e_res + ")");
+    console.log(" size => " + w_px + "px x " + h_px + "px");
+    console.log(" scale => 1:" + e_scale + " (at " + target_dpi + "dpi)");
+
+    // Do actual export
+    self.exportCanvas(function() {
+        // Reset to previous viewport
+        self.setRender();
+        self.resetMap(mapsave);
+        self.map.render();
+    });
+};
 
 
 // Load on start
 if (viewer.map === undefined) {
     viewer.initMap();
-}
-
-
-
-
-//=================================================
-//
-//=================================================
-
-
-// Init map
-// Load Layers and Stuff
-function initMap() {
-    map_div = document.getElementById("map");
-    export_div = document.getElementById("export-map");
-
-    // init map
-    map = new ol.Map({
-        target: map_div,
-        controls: ol.control.defaults().extend([
-            new ol.control.ScaleLine(),
-            new ol.control.LayerSwitcher(),
-        ]),
-        interactions: ol.interaction.defaults({
-            altShiftDragRotate: false,
-            shiftDragZoom: false,
-            pinchRotate: false,
-        }),
-        view: new ol.View({
-            projection: 'EPSG:3857',
-            center: map_coord_proj.center(),
-            zoom: 13,
-        }),
-    });
-
-    // Show tempory extent
-    var ext_feature = new ol.Feature({
-            geometry: new ol.geom.Polygon([map_coord_proj.vertices()], "XY"),
-        });
-    var center_feature = new ol.Feature({
-            geometry: new ol.geom.Point(map_coord_proj.center(), "XY"),
-        });
-    var overlay = new ol.layer.Vector({
-        source: new ol.source.Vector({
-            features: [ext_feature, center_feature],
-        }),
-        visible: true,
-    });
-
-    // init OSM base map
-    var osmGroup = new ol.layer.Group({
-        title: 'OpenStreetMap',
-        layers: [
-            // OpenStreetMap (Mapnik)
-            // http://b.tile.openstreetmap.org/${z}/${x}/${y}.png
-            new ol.layer.Tile({
-                title: "OSM Mapnik",
-                type: 'base',
-                visible: true,
-                source: new ol.source.OSM(),
-            }),
-        ],
-    });
-
-    // init DTK base map
-    var dtkGroup = new ol.layer.Group({
-        title: 'NRW DTK',
-        layers: [
-            // NRW DTK
-            // http://www.wms.nrw.de/geobasis/wms_nw_dtk?
-            new ol.layer.Tile({
-                title: "DTK Komplett",
-                type: 'base',
-                visible: false,
-                source: new ol.source.TileWMS({
-                    url: "http://www.wms.nrw.de/geobasis/wms_nw_dtk?",
-                    crossOrigin: 'anonymous',
-                    params: {
-                        LAYERS: 'nw_dtk_col',
-                    },
-                }),
-            }),
-        ],
-    });
-
-
-    // init territory border style
-    var territory_style = new ol.style.Style({
-        fill: new ol.style.Fill({
-            color: 'rgba(110, 198, 255, 0.2)'
-        }),
-        stroke: new ol.style.Stroke({
-            color: '#2196f3',
-            width: 2
-        }),
-        image: new ol.style.Circle({
-            radius: 8,
-            fill: new ol.style.Fill({
-                color: '#2196f3'
-            })
-        }),
-    });
-
-    var border_features = new ol.Collection();
-
-    // init border overlay
-    var borderGroup = new ol.layer.Group({
-        title: 'Borders',
-        layers: [
-            // territory border
-            new ol.layer.Vector({
-                title: 'Remscheid-Lennep',
-                visibility: true,
-                style: territory_style,
-                source: new ol.source.Vector({
-                    features: border_features,
-                }),
-            }),
-        ],
-    });
-
-    var modify = new ol.interaction.Modify({
-        features: border_features,
-        // the SHIFT key must be pressed to delete vertices, so
-        // that new vertices can be drawn at the same position
-        // of existing vertices
-        deleteCondition: function(event) {
-          return ol.events.condition.shiftKeyOnly(event) &&
-              ol.events.condition.singleClick(event);
-        }
-      });
-      map.addInteraction(modify);
-
-    // init marker overlay
-    var markerGroup = new ol.layer.Group({
-        title: 'Markers',
-        layers: [
-            // Kingdom Hall
-            new ol.layer.Vector({
-                title: 'Kingdom Hall',
-                visible: true,
-                style: territory_style,
-                source: new ol.source.Vector({
-                    features: [new ol.Feature({
-                        geometry: new ol.geom.Point(map_coord_proj.kingdom_hall(), "XY"),
-                    })],
-                }),
-            }),
-        ],
-    });
-
-    map.addLayer(osmGroup);
-    map.addLayer(dtkGroup);
-    map.addLayer(overlay);
-    map.addLayer(borderGroup);
-    map.addLayer(markerGroup);
-};
-
-function startDraw() {
-    
-    //function addInteraction() {
-        draw = new ol.interaction.Draw({
-            features: border_features,
-            type: 'Polygon',
-        });
-        map.addInteraction(draw);
-    //}
-
-}
-
-function exportFullMap(dpi, scale) {
-    var real_w = map_coord_proj.tr()[0] - map_coord_proj.bl()[0];
-    var real_h = map_coord_proj.tr()[1] - map_coord_proj.bl()[1];
-
-    var pointres = (scale * 25.4) / (dpi * 1000);
-    var pixel_w = Math.ceil(real_w / pointres);
-    var pixel_h = Math.ceil(real_h / pointres);
-
-    var param_size = [pixel_w, pixel_h];
-    console.log(pointres + " / " + param_size);
-    //var param_size = [1200, 1200];
-
-    var view = map.getView();
-
-    var mpu = view.getProjection().getMetersPerUnit();
-    var pointres = ol.proj.getPointResolution(view.getProjection(), view.getResolution(), view.getCenter());
-    var res = view.getResolutionForExtent(map_coord_proj.extents(), [1200, 1200]);
-    console.log(pointres + " / " + res);
-
-
-    // Save current map viewport
-    var mapsave = {
-        'size': map.getSize(),
-        'center': view.getCenter(),
-        'zoom': view.getZoom(),
-        'rotation': view.getRotation(),
-    };
-
-    // Set export viewport
-    map.setTarget(export_div);
-    map.setSize(param_size);
-    view.fit(map_coord_proj.extents(), {
-        size: map.getSize(),
-        padding: [0, 0, 0, 0],
-    });
-
-    var pointres = ol.proj.getPointResolution(view.getProjection(), view.getResolution(), view.getCenter());
-    var res = view.getResolutionForExtent(map_coord_proj.extents(), map.getSize());
-    console.log(pointres + " / " + res);
-
-    // Do actual export
-    saveMap(function() {
-        // Reset previous viewport
-        map.setTarget(map_div);
-        map.setSize(mapsave.size);
-
-        view.setCenter(mapsave.center);
-        view.setZoom(mapsave.zoom);
-        view.setRotation(mapsave.rotation);
-
-        map.render();
-    });
 }
 
