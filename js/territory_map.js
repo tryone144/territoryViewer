@@ -20,7 +20,7 @@ window.TerritoryViewer = {};
 var viewer = window.TerritoryViewer;
 
 viewer.NAME = 'TerritoryViewer';
-viewer.VERSION = '0.1.1';
+viewer.VERSION = '0.2.0';
 
 
 // =====================================
@@ -162,6 +162,11 @@ viewer.tools.getIcon = function(name) {
     icon.className = 'fa ' + cls;
 
     return icon;
+};
+viewer.tools.getIconInline = function(name) {
+    var cls = name || "exclamation-triangle";
+
+    return '<i class="fa ' + cls + '" aria-hidden="true" style="padding-right: 0.7em;"></i>'
 };
 viewer.tools.parseHash = function(hash) {
     if (typeof hash !== 'string' || hash.length < 1) {
@@ -958,7 +963,7 @@ viewer.addContextMenu = function() {
         // Items: feature specific (export, rename, modify, delete)
         if (feature) {
             items.push({
-                text: 'Export',
+                text: viewer.tools.getIconInline('fa-picture-o') + 'Export',
                 data: {
                     target: feature,
                 },
@@ -975,7 +980,7 @@ viewer.addContextMenu = function() {
 
             if (viewer.editMode) {
                 items.push({
-                    text: 'Rename',
+                    text: viewer.tools.getIconInline('fa-tag') + 'Rename',
                     data: {
                         target: feature,
                         oldName: feature.get('title') || '',
@@ -991,7 +996,7 @@ viewer.addContextMenu = function() {
                 });
 
                 items.push({
-                    text: 'Modify',
+                    text: viewer.tools.getIconInline('fa-pencil') + 'Modify',
                     data: {
                         target: feature,
                     },
@@ -999,7 +1004,7 @@ viewer.addContextMenu = function() {
                 });
 
                 items.push({
-                    text: 'Delete',
+                    text: viewer.tools.getIconInline('fa-trash') + 'Delete',
                     data: {
                         target: feature,
                     },
@@ -1033,7 +1038,7 @@ viewer.addContextMenu = function() {
 
         if (export_entries.length > 0) {
             items.push({
-                text: 'Export Layer',
+                text: viewer.tools.getIconInline('fa-picture-o') + 'Export Layer',
                 items: export_entries,
             });
 
@@ -1045,7 +1050,7 @@ viewer.addContextMenu = function() {
         // Items: layer management (add, delete, rename)
         if (viewer.editMode) {
             items.push({
-                text: 'Add Layer',
+                text: viewer.tools.getIconInline('fa-plus-square') + 'Add Layer',
                 callback: function(item) {
                     var name = prompt("Enter name for new layer:");
                     if (name === null) {
@@ -1098,14 +1103,14 @@ viewer.addContextMenu = function() {
 
             if (rename_entries.length > 0) {
                 items.push({
-                    text: 'Rename Layer',
+                    text: viewer.tools.getIconInline('fa-tag') + 'Rename Layer',
                     items: rename_entries,
                 });
             }
 
             if (delete_entries.length > 0) {
                 items.push({
-                    text: 'Delete Layer',
+                    text: viewer.tools.getIconInline('fa-trash') + 'Delete Layer',
                     items: delete_entries,
                 });
             }
@@ -1115,7 +1120,7 @@ viewer.addContextMenu = function() {
             // Items: drawing target
             if (select_entries.length > 0) {
                 items.push({
-                    text: 'Draw Target',
+                    text: viewer.tools.getIconInline('fa-map-pin') + 'Draw Target',
                     items: select_entries,
                 });
             }
@@ -1124,7 +1129,7 @@ viewer.addContextMenu = function() {
         // Items: draw actions (polygon, line, marker)
         if (viewer.editMode) {
             items.push({
-                text: 'Draw',
+                text: viewer.tools.getIconInline('fa-pencil') + 'Draw',
                 items: [
                     {
                         text: 'Polygon',
@@ -1138,7 +1143,7 @@ viewer.addContextMenu = function() {
             });
 
             items.push({
-                text: 'Add Marker',
+                text: viewer.tools.getIconInline('fa-map-marker') + 'Add Marker',
                 callback: function(item) {
                     var text = prompt("Enter text for new marker:");
                     if (text === null) {
@@ -1157,11 +1162,11 @@ viewer.addContextMenu = function() {
         viewer.contextmenu.extend(items);
         viewer.contextmenu.extend([
             {
-                text: 'Help',
+                text: viewer.tools.getIconInline('fa-question-circle') + 'Help',
                 callback: (item) => viewer.showHelp(),
             },
             {
-                text: 'About',
+                text: viewer.tools.getIconInline('fa-info-circle') + 'About',
                 callback: (item) => viewer.showAbout(),
             },
         ]);
