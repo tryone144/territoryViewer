@@ -180,6 +180,37 @@ viewer.tools.parseHash = function(hash) {
         editMode: (parse.indexOf('edit') > -1),
     };
 };
+viewer.tools.loadFile = function(file, succsessCallback, errorCallback) {
+    var handleError = function(e) {
+        var message = "Unkown error!";
+        switch (e.target.error.code) {
+            case e.target.error.NOT_FOUND_ERR:
+                message = "File not found!";
+                break;
+            case e.target.error.NOT_READABLE_ERR:
+                message = "File not readable!";
+                break;
+            case e.target.error.ABORT_ERR:
+                message = "Read operation was aborted!";
+                break;
+            case e.target.error.SECURITY_ERR:
+                message = "File is in a locked state!";
+                break;
+            case e.target.error.ENCODING_ERR:
+                message = "The file is too long to encode in a 'data://' URL.";
+                break;
+            default:
+                message = "Read error.";
+        }
+        errorCallback(false, message);
+    };
+
+    var fileReader = new FileReader();
+    fileReader.addEventListener('load', succsessCallback, false)
+    fileReader.addEventListener('error', handleError, false);
+    fileReader.readAsText(file);
+}
+
 
 viewer.setRender = function() {
     this.map.setTarget(this.map_div);
@@ -349,6 +380,51 @@ viewer.ctrl.FileControls = function(opt_options) {
     });
     this.btnLoad_.appendChild(fi);
 
+    // Button "Import KML"
+    this.fileInput2_ = document.createElement('input');
+
+    var fi2 = this.fileInput2_;
+    fi2.type = 'file';
+    fi2.name = 'KMLFile';
+    fi2.accept = '.kml,application/vnd.google-earth.kml+xml';
+    fi2.style = 'position: fixed; top: -100em;';
+
+    var fileSelection2 = function(evt) {
+        var input = evt.target;
+
+        if (input.files.length > 0) {
+            var file = input.files[0];
+
+            viewer.importTerritory(file, function(success, message) {
+                if (success === true) {
+                    console.log("importTerritory() finished");
+                    //viewer.resetChanged();
+                    viewer.view.fit(viewer.extentsOfGroup(viewer.territoryGroup), {
+                        size: viewer.map.getSize(),
+                        padding: [20, 20, 20, 20],
+                    });
+                } else {
+                    console.error("importTerritory() failed: " + message);
+                    alert("Error while importing kml-file '" + file.name + "': " + message);
+                }
+
+                //viewer.resetLoading();
+                input.value = "";
+            });
+        }
+    };
+    fi2.addEventListener('change', fileSelection2, false);
+    fi2.addEventListener('click', (e) => e.stopPropagation(), false);
+
+    this.btnImport_ = viewer.tools.createButton({
+        icon: 'fa-upload',
+        icon_outlined: false,
+        title: "Import KML file",
+        that: this,
+        handler: viewer.ctrl.FileControls.prototype.handleImport,
+    });
+    this.btnImport_.appendChild(fi2);
+
     // Button "Save Territory"
     this.btnSave_ = viewer.tools.createButton({
         icon: 'fa-save',
@@ -378,6 +454,7 @@ viewer.ctrl.FileControls = function(opt_options) {
     var element = document.createElement('div');
     element.className = 'tv-file-controls ol-unselectable ol-control';
     element.appendChild(this.btnLoad_);
+    element.appendChild(this.btnImport_);
     element.appendChild(this.btnSave_);
     element.appendChild(this.btnExportAll_);
     element.appendChild(this.btnExportViewport_);
@@ -420,6 +497,10 @@ viewer.ctrl.FileControls.prototype.handleLoad = function(evt) {
 
     viewer.setLoading();
     this.fileInput_.click();
+};
+
+viewer.ctrl.FileControls.prototype.handleImport = function(evt) {
+    this.fileInput2_.click();
 };
 
 viewer.ctrl.FileControls.prototype.handleSave = function(evt) {
@@ -1560,7 +1641,7 @@ viewer.saveTerritory = function(doneCallback) {
     }
 }
 
-// Import Data
+// Import GeoJSON Data
 viewer.loadTerritory = function(file, doneCallback) {
     console.log("loadTerritory(" + file.name + ")");
 
@@ -1642,34 +1723,71 @@ viewer.loadTerritory = function(file, doneCallback) {
         callback(true);
     };
 
-    var handleError = function(e) {
-        var message = "Unkown error!";
-        switch (e.target.error.code) {
-            case e.target.error.NOT_FOUND_ERR:
-                message = "File not found!";
-                break;
-            case e.target.error.NOT_READABLE_ERR:
-                message = "File not readable!";
-                break;
-            case e.target.error.ABORT_ERR:
-                message = "Read operation was aborted!";
-                break;
-            case e.target.error.SECURITY_ERR:
-                message = "File is in a locked state!";
-                break;
-            case e.target.error.ENCODING_ERR:
-                message = "The file is too long to encode in a 'data://' URL.";
-                break;
-            default:
-                message = "Read error.";
+    viewer.tools.loadFile(file, handleFile, callback);
+}
+
+// Import KML Data
+viewer.importTerritory = function(file, doneCallback) {
+    console.log("importTerritory(" + file.name + ")");
+
+    var callback = function(succ, err) {
+        viewer.enableInteractions();
+
+        if (typeof doneCallback === 'function') {
+            doneCallback(succ, err);
+        } else if (!succ) {
+            throw new viewer.ex.LoadTerritoryException(err);
         }
-        callback(false, message);
     };
 
-    var fileReader = new FileReader();
-    fileReader.addEventListener('load', handleFile, false)
-    fileReader.addEventListener('error', handleError, false);
-    fileReader.readAsText(file);
+    var handleFile = function(e) {
+        var result = e.target.result;
+        var importFeatures = undefined;
+
+        console.log("Import Features: " + result);
+        importFeatures = result;
+
+        // Load kml Features
+        var reader = new ol.format.KML({
+            defaultDataProjection: 'EPSG:4326',
+        });
+
+        try {
+            var f = reader.readFeatures(importFeatures, {
+                featureProjection: 'EPSG:3857',
+            });
+        } catch (ex) {
+            callback(false, "Cannot read imported features: \"" + ex + "\"");
+            return;
+        }
+
+        f.forEach(function (ft) {
+            //viewer.updateFeatureStyle(ft, 'default');
+        });
+
+        var l = new ol.layer.Vector({
+            title: "Imported Features",
+            visible: true,
+            style: viewer.styles.territory,
+            source: new ol.source.Vector({
+                features: f,
+            }),
+        });
+
+        // Disable any selection
+        viewer.stopDraw(true);
+        viewer.stopEdit();
+        viewer.disableInteractions();
+
+        // Add new Layer
+        var lc = viewer.territoryGroup.getLayers();
+        l.addEventListener('change:visible', viewer.handleVisibilityChange, false);
+        lc.push(l);
+
+        callback(true);
+    };
+
+    viewer.tools.loadFile(file, handleFile, callback);
 }
 
 
