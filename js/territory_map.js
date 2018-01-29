@@ -142,7 +142,7 @@ viewer.tools.createButton = function(opts) {
     button.title = options.title || 'Button';
 
     if (options.icon !== undefined) {
-        button.appendChild(viewer.tools.getIcon(options.icon));
+        button.appendChild(viewer.tools.getIcon(options.icon, options.icon_outlined));
     } else {
         button.innerHTML = options.label || 'X';
     }
@@ -155,18 +155,18 @@ viewer.tools.createButton = function(opts) {
 
     return button;
 };
-viewer.tools.getIcon = function(name) {
+viewer.tools.getIcon = function(name, outline) {
     var cls = name || "exclamation-triangle";
 
     var icon = document.createElement('span');
-    icon.className = 'fa ' + cls;
+    icon.className = (outline === true ? 'far ' : 'fas ') + cls;
 
     return icon;
 };
-viewer.tools.getIconInline = function(name) {
+viewer.tools.getIconInline = function(name, outline) {
     var cls = name || "exclamation-triangle";
 
-    return '<i class="fa ' + cls + '" aria-hidden="true" style="padding-right: 0.7em;"></i>'
+    return '<i class="' + (outline === true ? 'far ' : 'fas ') + cls + '" aria-hidden="true" style="padding-right: 0.7em;"></i>'
 };
 viewer.tools.parseHash = function(hash) {
     if (typeof hash !== 'string' || hash.length < 1) {
@@ -341,7 +341,8 @@ viewer.ctrl.FileControls = function(opt_options) {
     fi.addEventListener('click', (e) => e.stopPropagation(), false);
 
     this.btnLoad_ = viewer.tools.createButton({
-        icon: 'fa-folder-open-o',
+        icon: 'fa-folder-open',
+        icon_outlined: true,
         title: "Load Territory",
         that: this,
         handler: viewer.ctrl.FileControls.prototype.handleLoad,
@@ -350,7 +351,8 @@ viewer.ctrl.FileControls = function(opt_options) {
 
     // Button "Save Territory"
     this.btnSave_ = viewer.tools.createButton({
-        icon: 'fa-floppy-o',
+        icon: 'fa-save',
+        icon_outlined: true,
         title: "Save Territory",
         that: this,
         handler: viewer.ctrl.FileControls.prototype.handleSave,
@@ -365,7 +367,8 @@ viewer.ctrl.FileControls = function(opt_options) {
     });
 
     this.btnExportViewport_ = viewer.tools.createButton({
-        icon: 'fa-picture-o',
+        icon: 'fa-image',
+        icon_outlined: true,
         title: "Export current viewport",
         that: this,
         handler: viewer.ctrl.FileControls.prototype.handleExportViewport,
@@ -963,7 +966,7 @@ viewer.addContextMenu = function() {
         // Items: feature specific (export, rename, modify, delete)
         if (feature) {
             items.push({
-                text: viewer.tools.getIconInline('fa-picture-o') + 'Export',
+                text: viewer.tools.getIconInline('fa-image', true) + 'Export',
                 data: {
                     target: feature,
                 },
@@ -996,7 +999,7 @@ viewer.addContextMenu = function() {
                 });
 
                 items.push({
-                    text: viewer.tools.getIconInline('fa-pencil') + 'Modify',
+                    text: viewer.tools.getIconInline('fa-edit', true) + 'Modify',
                     data: {
                         target: feature,
                     },
@@ -1004,7 +1007,7 @@ viewer.addContextMenu = function() {
                 });
 
                 items.push({
-                    text: viewer.tools.getIconInline('fa-trash') + 'Delete',
+                    text: viewer.tools.getIconInline('fa-trash-alt', true) + 'Delete',
                     data: {
                         target: feature,
                     },
@@ -1038,7 +1041,7 @@ viewer.addContextMenu = function() {
 
         if (export_entries.length > 0) {
             items.push({
-                text: viewer.tools.getIconInline('fa-picture-o') + 'Export Layer',
+                text: viewer.tools.getIconInline('fa-image', true) + 'Export Layer',
                 items: export_entries,
             });
 
@@ -1110,7 +1113,7 @@ viewer.addContextMenu = function() {
 
             if (delete_entries.length > 0) {
                 items.push({
-                    text: viewer.tools.getIconInline('fa-trash') + 'Delete Layer',
+                    text: viewer.tools.getIconInline('fa-trash-alt', true) + 'Delete Layer',
                     items: delete_entries,
                 });
             }
@@ -1129,7 +1132,7 @@ viewer.addContextMenu = function() {
         // Items: draw actions (polygon, line, marker)
         if (viewer.editMode) {
             items.push({
-                text: viewer.tools.getIconInline('fa-pencil') + 'Draw',
+                text: viewer.tools.getIconInline('fa-pencil-alt') + 'Draw',
                 items: [
                     {
                         text: 'Polygon',
@@ -1143,7 +1146,7 @@ viewer.addContextMenu = function() {
             });
 
             items.push({
-                text: viewer.tools.getIconInline('fa-map-marker') + 'Add Marker',
+                text: viewer.tools.getIconInline('fa-map-marker-alt') + 'Add Marker',
                 callback: function(item) {
                     var text = prompt("Enter text for new marker:");
                     if (text === null) {
